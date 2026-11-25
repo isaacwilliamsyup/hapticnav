@@ -1,0 +1,2740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>J.A.R.V.I.S. Paraclimb Nav — Complete Accessible Phone &amp; Lab Suite</title>
+
+  <!-- MediaPipe Pose & Hands (HTTPS required for Bluefy iOS) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    :root {
+      --bg: #04070b;
+      --surface: #0d1520;
+      --surface-alt: #131f2e;
+      --border: #25364a;
+      --yellow: #ffea00;
+      --cyan: #00e5ff;
+      --green: #00e676;
+      --orange: #ff9100;
+      --red: #ff1744;
+      --purple: #d500f9;
+      --text: #ffffff;
+      --muted: #b0bec5;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      padding: env(safe-area-inset-top, 8px) 8px env(safe-area-inset-bottom, 8px) 8px;
+      gap: 6px;
+    }
+
+    /* Always-mounted hidden video so iOS/Bluefy never suspends frame decoding */
+    #input-video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 2px;
+      height: 2px;
+      opacity: 0.001;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    button:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 4px solid var(--yellow);
+      outline-offset: 2px;
+    }
+
+    /* TOP HEADER BAR */
+    header.top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 6px 10px;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+
+    .brand-title {
+      font-size: clamp(0.85rem, 2.8vw, 1.05rem);
+      font-weight: 900;
+      color: var(--cyan);
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .status-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--orange);
+      box-shadow: 0 0 8px var(--orange);
+      flex-shrink: 0;
+    }
+    .status-dot.live {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .hdr-btn {
+      background: #182638;
+      color: var(--text);
+      border: 2px solid var(--cyan);
+      border-radius: 8px;
+      padding: 7px 11px;
+      font-size: clamp(0.76rem, 2.5vw, 0.88rem);
+      font-weight: 800;
+      cursor: pointer;
+      min-height: 38px;
+    }
+    .hdr-btn.lab-toggle {
+      background: #1e1033;
+      border-color: var(--purple);
+      color: var(--yellow);
+      text-transform: uppercase;
+    }
+    .hdr-btn.lab-toggle.active {
+      background: var(--purple);
+      color: #000000;
+      border-color: #ffffff;
+    }
+
+    /* LIVE ACCESSIBLE VOICE / STATUS BANNER */
+    #live-status {
+      background: var(--surface);
+      border: 3px solid var(--cyan);
+      color: var(--yellow);
+      padding: 8px 12px;
+      font-size: clamp(0.94rem, 3.2vw, 1.16rem);
+      font-weight: 800;
+      line-height: 1.25;
+      border-radius: 10px;
+      min-height: 58px;
+      max-height: 13dvh;
+      overflow-y: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    #live-status.state-break {
+      border-color: var(--orange);
+      background: #2b1a04;
+      color: var(--yellow);
+    }
+    #live-status.state-emergency {
+      border-color: var(--red);
+      background: #3d0611;
+      color: #ffffff;
+    }
+    #live-status.state-ok {
+      border-color: var(--green);
+      color: #ccff90;
+    }
+
+    /* SHARED POD TELEMETRY & ACTIVE CUE BAR */
+    .hud-strip {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    @media (max-width: 680px) {
+      .hud-strip { grid-template-columns: 1fr; }
+    }
+
+    .telemetry-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      background: #070b10;
+      padding: 4px;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: clamp(0.68rem, 2.3vw, 0.84rem);
+      font-weight: 800;
+    }
+
+    .pod-badge {
+      padding: 5px 3px;
+      border-radius: 6px;
+      background: #101924;
+      border: 2px solid #455a64;
+      color: #cfd8dc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .pod-badge.connected {
+      background: #0a2417;
+      color: #69f0ae;
+    }
+
+    .swatch-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      border: 1.5px solid #ffffff;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .hold-comm-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #0d1824;
+      border: 2px solid var(--yellow);
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: clamp(0.74rem, 2.4vw, 0.88rem);
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .hold-tag { color: var(--cyan); font-weight: 900; }
+    .hold-clock { color: var(--yellow); font-weight: 900; }
+    .hold-pill {
+      background: var(--green);
+      color: #000000;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 900;
+      font-size: 0.74rem;
+      text-transform: uppercase;
+    }
+
+    main {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* =====================================================================
+       VIEW 1: BLIND-ACCESSIBLE COMPLETE PHONE CLIMBING INTERFACE
+       Zero dead ends: every state reachable by touch OR voice
+       ===================================================================== */
+    #view-phone {
+      display: grid;
+      grid-template-rows: 1.25fr 1fr 1fr 0.95fr;
+      gap: 8px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    button.zone-btn {
+      width: 100%;
+      height: 100%;
+      background: var(--surface);
+      color: var(--text);
+      border: 4px solid var(--cyan);
+      border-radius: 14px;
+      padding: 8px 14px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      text-align: center;
+    }
+    button.zone-btn:active {
+      background: var(--yellow);
+      color: #000000;
+      border-color: #ffffff;
+    }
+    button.zone-btn:active .zone-sub { color: #111111; }
+
+    .zone-title {
+      font-size: clamp(1.06rem, 4vw, 1.44rem);
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .zone-sub {
+      font-size: clamp(0.73rem, 2.4vw, 0.88rem);
+      font-weight: 600;
+      color: #cfd8dc;
+    }
+
+    button.zone-primary { border-color: var(--yellow); color: var(--yellow); background: #141908; }
+    button.zone-repeat  { border-color: var(--cyan);   color: var(--cyan);   background: #081822; }
+    button.zone-status  { border-color: var(--green);  color: var(--green);  background: #081e14; }
+    button.zone-danger  { border-color: var(--red);    color: #ff8a80;       background: #23090f; }
+
+    /* =====================================================================
+       VIEW 2: MODULAR 5-STEP LAB BENCH TEST SUITE
+       ===================================================================== */
+    #view-lab {
+      display: none;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 8px;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+    }
+    @media (max-width: 860px) {
+      #view-lab { grid-template-columns: 1fr; }
+    }
+
+    .lab-stage-col {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+    }
+
+    .canvas-box {
+      position: relative;
+      background: #000000;
+      border: 2px solid var(--cyan);
+      border-radius: 10px;
+      overflow: hidden;
+      flex: 1;
+      min-height: 240px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #master-canvas {
+      width: 100%;
+      height: 100%;
+      max-height: 58dvh;
+      object-fit: contain;
+      cursor: crosshair;
+      display: block;
+    }
+
+    .canvas-hud-top {
+      position: absolute;
+      top: 6px; left: 6px; right: 6px;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 4px;
+      pointer-events: none;
+    }
+
+    .hud-chip {
+      background: rgba(4, 7, 11, 0.88);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      padding: 3px 7px;
+      border-radius: 5px;
+      font-size: 0.7rem;
+      font-weight: 800;
+    }
+
+    .canvas-hud-bottom {
+      position: absolute;
+      bottom: 6px; left: 6px; right: 6px;
+      background: rgba(4, 7, 11, 0.9);
+      border: 1px solid var(--yellow);
+      color: var(--yellow);
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .stage-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 5px 8px;
+    }
+
+    .lab-steps-col {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .step-nav {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .step-tab {
+      background: var(--surface);
+      color: var(--muted);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 4px;
+      font-size: 0.71rem;
+      font-weight: 800;
+      cursor: pointer;
+      text-align: center;
+      line-height: 1.2;
+    }
+    .step-tab.active {
+      background: var(--cyan);
+      color: #000000;
+      border-color: #ffffff;
+    }
+
+    .step-panel {
+      display: none;
+      flex-direction: column;
+      gap: 7px;
+      overflow-y: auto;
+    }
+    .step-panel.active { display: flex; }
+
+    .lab-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 8px 10px;
+    }
+    .lab-card h3 {
+      font-size: 0.76rem;
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .row-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .lab-btn {
+      background: #182738;
+      color: #ffffff;
+      border: 1.5px solid var(--cyan);
+      border-radius: 7px;
+      padding: 5px 8px;
+      font-size: 0.73rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .lab-btn:active, .lab-btn.selected { background: var(--cyan); color: #000000; }
+    .lab-btn.ok { border-color: var(--green); color: #b9f6ca; }
+    .lab-btn.ok.selected { background: var(--green); color: #000000; }
+    .lab-btn.warn { border-color: var(--orange); color: var(--yellow); }
+    .lab-btn.warn.selected { background: var(--orange); color: #000000; }
+    .lab-btn.danger { border-color: var(--red); color: #ff8a80; background: #2a0a11; }
+    .lab-btn.danger:active { background: var(--red); color: #ffffff; }
+
+    select.lab-select {
+      background: #0a121c;
+      color: #ffffff;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 7px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .pod-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+
+    .pod-box-card {
+      background: #080e16;
+      border: 1.5px solid var(--border);
+      border-left: 5px solid var(--cyan);
+      border-radius: 7px;
+      padding: 6px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 0.75rem;
+    }
+    .pod-box-card.testing {
+      border-color: var(--orange);
+      background: #1f1406;
+    }
+
+    .meter-bar {
+      width: 100%;
+      height: 11px;
+      background: #091018;
+      border: 1px solid #37474f;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 3px;
+    }
+    .meter-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--cyan), var(--green));
+      transition: width 0.08s linear;
+    }
+    .meter-fill.warn { background: linear-gradient(90deg, var(--orange), var(--red)); }
+
+    .packet-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .byte-box {
+      background: #070b10;
+      border: 1px solid var(--cyan);
+      border-radius: 6px;
+      padding: 5px;
+      text-align: center;
+    }
+    .byte-lbl { font-size: 0.63rem; color: var(--muted); }
+    .byte-hex { font-size: 1.02rem; font-weight: 900; color: var(--yellow); }
+    .byte-sub { font-size: 0.65rem; color: #ffffff; }
+
+    .mono-log {
+      background: #05080c;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.69rem;
+      color: #69f0ae;
+      height: 76px;
+      overflow-y: auto;
+      line-height: 1.38;
+    }
+    .kv-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 5px;
+      font-size: 0.73rem;
+    }
+    .kv-cell {
+      background: #080e16;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 7px;
+    }
+    .kv-cell span { color: var(--muted); font-size: 0.66rem; display: block; }
+    .kv-cell strong { color: #ffffff; }
+  </style>
+</head>
+<body>
+
+  <!-- ALWAYS-MOUNTED VIDEO ELEMENT -->
+  <video id="input-video" playsinline muted autoplay aria-hidden="true"></video>
+
+  <!-- TOP HEADER -->
+  <header class="top-bar" role="banner">
+    <div class="brand-title">
+      <span id="engine-dot" class="status-dot" aria-hidden="true"></span>
+      <span>J.A.R.V.I.S. PARACLIMB</span>
+    </div>
+    <div class="header-actions">
+      <button id="btn-flip-cam" class="hdr-btn" aria-label="Switch camera between rear and front">Cam: Rear</button>
+      <button id="btn-toggle-lab" class="hdr-btn lab-toggle" aria-pressed="false" aria-label="Switch between Complete Phone Mode and Step-by-Step Lab Test Mode">
+        Lab Test: OFF
+      </button>
+    </div>
+  </header>
+
+  <!-- LIVE VOICE & SCREEN-READER STATUS BANNER -->
+  <div id="live-status" role="status" aria-live="assertive" aria-atomic="true">
+    TAP BUTTON 1 (TOP) ONCE TO START J.A.R.V.I.S. VOICE, CAMERA, AND SENSORS
+  </div>
+
+  <!-- SHARED 4-POD STATUS (COLORS TRANSFERRED FROM LAB) + ACTIVE HOLD CUE -->
+  <section class="hud-strip" aria-label="Pod connection and active climbing cue summary">
+    <div class="telemetry-bar" role="list" aria-label="Haptic pods status">
+      <div id="badge-LW" class="pod-badge" role="listitem"><span class="swatch-dot" id="dot-LW"></span>LH: OFF</div>
+      <div id="badge-RW" class="pod-badge" role="listitem"><span class="swatch-dot" id="dot-RW"></span>RH: OFF</div>
+      <div id="badge-LA" class="pod-badge" role="listitem"><span class="swatch-dot" id="dot-LA"></span>LA: OFF</div>
+      <div id="badge-RA" class="pod-badge" role="listitem"><span class="swatch-dot" id="dot-RA"></span>RA: OFF</div>
+    </div>
+    <div class="hold-comm-bar" aria-label="Current target hold">
+      <span id="hud-limb" class="hold-tag">LIMB: RIGHT HAND</span>
+      <span id="hud-clock" class="hold-clock">12 O'CLOCK (1/2 LEN)</span>
+      <span id="hud-hold-type" class="hold-pill">READY</span>
+    </div>
+  </section>
+
+  <main>
+    <!-- =================================================================== -->
+    <!-- VIEW 1: COMPLETE COMPILED BLIND-ACCESSIBLE PHONE MODE               -->
+    <!-- =================================================================== -->
+    <section id="view-phone" aria-label="Eyes-Free Complete Climbing Controls">
+      <button id="zone-primary" class="zone-btn zone-primary" aria-label="Zone 1 Primary Action">
+        <span id="zone1-title" class="zone-title">1. Start System &amp; Sensors</span>
+        <span id="zone1-sub" class="zone-sub">Single tap enables voice, camera &amp; tilt once, then guides you start to finish.</span>
+      </button>
+
+      <button id="zone-repeat" class="zone-btn zone-repeat" aria-label="Zone 2 Repeat Last Message">
+        <span class="zone-title">2. Repeat Last Message</span>
+        <span id="zone2-sub" class="zone-sub">Voice: "Repeat" (last spoken cue) | "Again" (current hold)</span>
+      </button>
+
+      <button id="zone-status" class="zone-btn zone-status" aria-label="Zone 3 Secondary Action, Skip Pairing, Descent, or Status">
+        <span id="zone3-title" class="zone-title">3. System Status &amp; Wall Mode</span>
+        <span id="zone3-sub" class="zone-sub">Touch-accessible backup for Skip Pairing, Early Descent &amp; Status</span>
+      </button>
+
+      <button id="zone-danger" class="zone-btn zone-danger" aria-label="Zone 4 Pause Climb, All Stop, or Find My Phone">
+        <span id="zone4-title" class="zone-title">4. Find My Phone / All Stop</span>
+        <span id="zone4-sub" class="zone-sub">Voice: "Find my phone" or "Stop" | Tilt: <span id="phone-tilt-txt">OK</span> | Mode: <span id="phone-mode-txt">LIVE CAM</span></span>
+      </button>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- VIEW 2: MODULAR 5-STEP LAB BENCH TEST SUITE                         -->
+    <!-- =================================================================== -->
+    <section id="view-lab" aria-label="Step-by-Step Lab Bench Test Suite">
+      <div class="lab-stage-col">
+        <div class="canvas-box">
+          <canvas id="master-canvas" width="640" height="480" aria-label="Live camera feed with optional mapping overlay, body wireframe, and both hands"></canvas>
+          <div class="canvas-hud-top">
+            <span id="chip-pose" class="hud-chip">POSE: LOADING...</span>
+            <span id="chip-hands" class="hud-chip">LH:-- | RH:--</span>
+            <span id="chip-mode" class="hud-chip" style="color:#00e676;">MODE: LIVE CAM</span>
+            <span id="chip-fps" class="hud-chip">0 FPS</span>
+          </div>
+          <div id="canvas-hint" class="canvas-hud-bottom">
+            LIVE CAMERA MODE: Detects distinct holds directly from live video (no static map overlay). Tap any hold on video to sample its color.
+          </div>
+        </div>
+
+        <div class="stage-toolbar">
+          <div class="row-wrap">
+            <button id="btn-mode-live" class="lab-btn ok selected" onclick="setGuidanceSource('live')">Live Camera Feed</button>
+            <button id="btn-mode-map" class="lab-btn" onclick="setGuidanceSource('map')">Wall Map Overlay</button>
+            <button id="btn-toggle-overlay" class="lab-btn selected" onclick="toggleVisualOverlay()">Overlay: ON</button>
+          </div>
+          <div class="row-wrap">
+            <button id="btn-vision-haptics" class="lab-btn" onclick="toggleLabVisionHaptics()">Vision Haptics: OFF</button>
+            <button class="lab-btn danger" onclick="stopAllPodTests()">STOP ALL</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="lab-steps-col">
+        <nav class="step-nav" role="tablist" aria-label="Lab test steps">
+          <button class="step-tab active" role="tab" id="tab-s1" onclick="selectLabStep(1)">Step 1<br/>BLE &amp; Pods</button>
+          <button class="step-tab" role="tab" id="tab-s2" onclick="selectLabStep(2)">Step 2<br/>Pod Colors</button>
+          <button class="step-tab" role="tab" id="tab-s3" onclick="selectLabStep(3)">Step 3<br/>Body/Hands</button>
+          <button class="step-tab" role="tab" id="tab-s4" onclick="selectLabStep(4)">Step 4<br/>Wall/Modes</button>
+          <button class="step-tab" role="tab" id="tab-s5" onclick="selectLabStep(5)">Step 5<br/>Safety/Down</button>
+        </nav>
+
+        <!-- STEP 1: BLE PAIRING & MOTOR PULSE TEST -->
+        <div id="panel-s1" class="step-panel active" role="tabpanel">
+          <div class="lab-card">
+            <h3>
+              <span>Step 1A: Pair &amp; Test Each Pod (Bluefy BLE)</span>
+              <button class="lab-btn danger" onclick="stopAllPodTests()">STOP ALL TESTS</button>
+            </h3>
+            <p style="font-size:0.71rem; color:var(--muted); margin-bottom:6px;">
+              Resistor-free BLE (`19b10000-...`). Switch SW1 must be ON. Use <strong>Buzz</strong> to pulse continuously and <strong>Stop</strong> to halt that pod cleanly.
+            </p>
+            <div class="pod-grid-2" id="lab-ble-grid"></div>
+          </div>
+
+          <div class="lab-card">
+            <h3><span>Step 1B: 3-Byte Packet Inspector</span><button id="btn-audio-sim" class="lab-btn selected" onclick="toggleAudioSim()">Audio Sim: ON</button></h3>
+            <div class="packet-grid">
+              <div class="byte-box"><div class="byte-lbl">BYTE 0 (MODE)</div><div id="b0-hex" class="byte-hex">0x00</div><div id="b0-desc" class="byte-sub">OFF</div></div>
+              <div class="byte-box"><div class="byte-lbl">BYTE 1 (FREQ)</div><div id="b1-hex" class="byte-hex">0x00</div><div id="b1-desc" class="byte-sub">0 Hz</div></div>
+              <div class="byte-box"><div class="byte-lbl">BYTE 2 (PWM)</div><div id="b2-hex" class="byte-hex">0x00</div><div id="b2-desc" class="byte-sub">0 / 255</div></div>
+            </div>
+            <div id="packet-log" class="mono-log" style="margin-top:6px;">BLE packet log ready...</div>
+          </div>
+        </div>
+
+        <!-- STEP 2: WRIST & ANKLE POD COLOR SELECTION -->
+        <div id="panel-s2" class="step-panel" role="tabpanel">
+          <div class="lab-card">
+            <h3><span>Step 2A: Select Wrist/Ankle Pod Colors</span><span style="color:var(--green); font-size:0.68rem;">SYNCS TO PHONE</span></h3>
+            <p style="font-size:0.71rem; color:var(--muted); margin-bottom:6px;">
+              Select shell colors for RH, LH, RA, LA. Transfers automatically to Phone Mode badges and climber anchor.
+            </p>
+            <div class="pod-grid-2" id="lab-color-grid"></div>
+          </div>
+
+          <div class="lab-card">
+            <h3><span>Step 2B: Pod-Anchor Climber Lock</span><button id="btn-anchor-toggle" class="lab-btn" onclick="togglePodAnchor()">Anchor Lock: OFF</button></h3>
+            <div class="row-wrap" style="margin-bottom:6px;">
+              <span style="font-size:0.73rem;">Hue Tolerance: <strong id="hue-tol-lbl">26°</strong></span>
+              <input type="range" id="hue-tol" min="12" max="48" value="26" style="flex:1;" oninput="document.getElementById('hue-tol-lbl').textContent=this.value+'°';" />
+            </div>
+            <div class="kv-grid">
+              <div class="kv-cell"><span>Left Wrist (LH)</span><strong id="match-LW">--</strong></div>
+              <div class="kv-cell"><span>Right Wrist (RH)</span><strong id="match-RW">--</strong></div>
+              <div class="kv-cell"><span>Left Ankle (LA)</span><strong id="match-LA">--</strong></div>
+              <div class="kv-cell"><span>Right Ankle (RA)</span><strong id="match-RA">--</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 3: BODY POSE + DUAL-HAND GRIP + HITBOX DWELL FALLBACK -->
+        <div id="panel-s3" class="step-panel" role="tabpanel">
+          <div class="lab-card">
+            <h3><span>Step 3A: Body Pose &amp; Dual-Hand Grip Telemetry</span><button class="lab-btn ok" onclick="restartVisionEngine()">Restart Loop</button></h3>
+            <div class="kv-grid">
+              <div class="kv-cell"><span>Left Hand Grip (LH)</span><strong id="diag-lh-grip" style="color:var(--cyan);">Not visible</strong></div>
+              <div class="kv-cell"><span>Right Hand Grip (RH)</span><strong id="diag-rh-grip" style="color:var(--cyan);">Not visible</strong></div>
+              <div class="kv-cell"><span>Pose Model</span><strong id="diag-pose">Initializing...</strong></div>
+              <div class="kv-cell"><span>Hands Model (2 Hands)</span><strong id="diag-hands">Initializing...</strong></div>
+              <div class="kv-cell"><span>Wrists (LH / RH)</span><strong id="diag-wrists">--</strong></div>
+              <div class="kv-cell"><span>Ankles (LA / RA)</span><strong id="diag-ankles">--</strong></div>
+            </div>
+          </div>
+
+          <div class="lab-card">
+            <h3><span>Step 3B: Hold Confirmation Mode (Grip vs. Hitbox Dwell)</span></h3>
+            <div style="font-size:0.73rem; margin-bottom:4px;">
+              Confirm Mode: <strong id="diag-confirm-mode" style="color:var(--yellow);">Waiting for hitbox entry</strong>
+            </div>
+            <p style="font-size:0.69rem; color:var(--muted); margin-bottom:4px;">
+              Clenched hand in hitbox = <strong>1.2s</strong> confirm. Hand unseen or foot = <strong>Hitbox Timing Fallback (1.8s)</strong>.
+            </p>
+            <div class="meter-bar"><div id="dwell-fill" class="meter-fill"></div></div>
+          </div>
+        </div>
+
+        <!-- STEP 4: LIVE CAMERA MODE VS WALL MAP OVERLAY + BREAK TIMERS -->
+        <div id="panel-s4" class="step-panel" role="tabpanel">
+          <div class="lab-card">
+            <h3>
+              <span>Step 4A: Tracking Source (Live Camera vs. Wall Map)</span>
+              <button class="lab-btn warn" onclick="communicateActiveHold(true)">Speak Hold</button>
+            </h3>
+            <div class="row-wrap" style="margin-bottom:6px;">
+              <span style="font-size:0.72rem;">Hold Color:</span>
+              <select id="select-route-color" class="lab-select" onchange="setRouteHoldColor(this.value)">
+                <option value="red">Red Holds</option>
+                <option value="blue">Blue Holds</option>
+                <option value="green">Green Holds</option>
+                <option value="yellow">Yellow Holds</option>
+                <option value="orange">Orange Holds</option>
+                <option value="purple">Purple Holds</option>
+              </select>
+              <select id="select-live-limb" class="lab-select" onchange="state.liveTargetLimb=this.value">
+                <option value="RW">Live Limb: RH</option>
+                <option value="LW">Live Limb: LH</option>
+                <option value="RA">Live Limb: RA</option>
+                <option value="LA">Live Limb: LA</option>
+              </select>
+            </div>
+            <div class="row-wrap" style="margin-bottom:6px;">
+              <button class="lab-btn ok" onclick="captureWallReferenceAndPlan()">Capture Wall Map</button>
+              <button id="btn-ref-overlay" class="lab-btn" onclick="toggleWallRefOverlay()">Ref Ghost: OFF</button>
+              <button class="lab-btn" onclick="loadDemoMappingOverlay()">Load Demo Map</button>
+            </div>
+            <div class="row-wrap" style="margin-bottom:4px;">
+              <button class="lab-btn" onclick="undoLastWallHitbox()">Undo Box</button>
+              <button class="lab-btn danger" onclick="clearAllOverlayBoxes()">Clear All Boxes</button>
+              <button class="lab-btn ok" onclick="simulateHoldConfirmed()">Sim Lock Hold</button>
+              <span style="font-size:0.71rem; color:var(--yellow);">Map Holds: <strong id="planned-count">0</strong></span>
+            </div>
+          </div>
+
+          <div class="lab-card">
+            <h3><span>Step 4B: Start Break &amp; Between-Hold Break Timers</span></h3>
+            <div class="row-wrap" style="margin-bottom:5px;">
+              <span style="font-size:0.72rem; color:var(--yellow);">Post-Safety Start Break: <strong id="break-val-lbl">2.5s</strong></span>
+              <input type="range" id="start-break-slider" min="1.0" max="5.0" step="0.5" value="2.5" style="flex:1;" oninput="updateStartBreak(this.value)" />
+            </div>
+            <div class="row-wrap" style="margin-bottom:6px;">
+              <span style="font-size:0.72rem; color:var(--cyan);">Between-Hold Confirm Break: <strong id="hold-break-lbl">1.8s</strong></span>
+              <input type="range" id="hold-break-slider" min="0.5" max="4.0" step="0.1" value="1.8" style="flex:1;" oninput="updateHoldBreak(this.value)" />
+            </div>
+            <div class="row-wrap">
+              <button class="lab-btn ok" onclick="startClimbWithBreak()">Test "Start" Break</button>
+              <button class="lab-btn" onclick="repeatLastMessage()">Test "Repeat"</button>
+              <button id="btn-short-mode" class="lab-btn" onclick="toggleShortMode()">Mode: FULL</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 5: 7.5s OBSTRUCTION GRACE, TILT <25° & DESCENT PLANNER -->
+        <div id="panel-s5" class="step-panel" role="tabpanel">
+          <div class="lab-card">
+            <h3><span>Step 5A: 7.5s Obstruction &amp; Tilt Emergency (No Flip)</span></h3>
+            <div class="kv-grid" style="margin-bottom:6px;">
+              <div class="kv-cell"><span>Brightness / Contrast</span><strong id="diag-lum">-- / --</strong></div>
+              <div class="kv-cell"><span>Phone Stand Tilt</span><strong id="diag-tilt">65° (OK)</strong></div>
+            </div>
+            <div style="font-size:0.71rem; color:var(--muted);">Obstruction Timer (Holds gentle pulse 0–7.5s → Emergency at 7.5s → Auto-Clears):</div>
+            <div class="meter-bar" style="margin-bottom:6px;"><div id="obstruct-fill" class="meter-fill warn"></div></div>
+            <div class="row-wrap">
+              <button class="lab-btn warn" onclick="enterEmergencyMode('Simulated >7.5s Obstruction')">Trigger Emergency</button>
+              <button class="lab-btn ok" onclick="exitEmergencyMode('Simulated Camera Clear')">Simulate Clear</button>
+              <button class="lab-btn danger" onclick="clearStoredHolds()">Clear Holds</button>
+            </div>
+          </div>
+
+          <div class="lab-card">
+            <h3>
+              <span>Step 5B: Manual Descent Planner (<span id="lab-vec-count">0</span> Logged)</span>
+              <button class="lab-btn warn" onclick="startSafeDescent('Lab Descent Test')">Run Descent</button>
+            </h3>
+            <div class="row-wrap" style="margin-bottom:6px;">
+              <button class="lab-btn" onclick="recordManualTestHold()">+ Add Test Hold</button>
+              <button class="lab-btn ok" onclick="stepSafeDescent()">Next Down-Hold</button>
+            </div>
+            <div id="vector-log" class="mono-log">No holds logged yet.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    /***************************************************************************
+     * J.A.R.V.I.S. PARACLIMB NAV — AUDITED NAVIGATION RELEASE
+     * Audit Fixes Included:
+     * 1. Zero Touch Dead Ends in Phone Mode (works even if Bluefy iOS has no
+     *    SpeechRecognition): Zone 3 skips pairing / triggers early descent,
+     *    Zone 4 properly transitions CLIMBING -> PAUSED so motors stay OFF.
+     * 2. Anatomically Safe Descent Planner: picks holds STRICTLY BELOW each
+     *    limb, moving feet down before hands so cues always point downward
+     *    (4-8 o'clock) and never direct a foot to the top hand hold.
+     * 3. Multi-Hold Live Camera Clustering: uses BFS connected components so
+     *    multiple same-color holds on a wall never average into empty space.
+     * 4. Safe Obstruction Hold-Pulse: only holds continuous modes (0x01/0x02),
+     *    never re-firing one-shot double-clicks (0x03) or summit swells (0x05).
+     * 5. WebGL-Safe Vision Loop: single loop token + reuses MediaPipe models.
+     ***************************************************************************/
+
+    const SERVICE_UUID     = "19b10000-e8f2-537e-4f6c-d104768a1214";
+    const HAPTIC_CHAR_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214";
+
+    const COLOR_OPTIONS = {
+      red:    { label: "Red",    hex: "#ff1744", hue: 355 },
+      blue:   { label: "Blue",   hex: "#2979ff", hue: 215 },
+      green:  { label: "Green",  hex: "#00e676", hue: 135 },
+      yellow: { label: "Yellow", hex: "#ffea00", hue: 52  },
+      orange: { label: "Orange", hex: "#ff9100", hue: 28  },
+      purple: { label: "Purple", hex: "#d500f9", hue: 285 },
+      cyan:   { label: "Cyan",   hex: "#00e5ff", hue: 190 },
+      pink:   { label: "Pink",   hex: "#ff4081", hue: 335 }
+    };
+
+    const POD_LIST = [
+      { key: "LW", uiKey: "LH", name: "Pod-LW", label: "Left hand",  defaultColor: "blue"   },
+      { key: "RW", uiKey: "RH", name: "Pod-RW", label: "Right hand", defaultColor: "red"    },
+      { key: "LA", uiKey: "LA", name: "Pod-LA", label: "Left foot",  defaultColor: "yellow" },
+      { key: "RA", uiKey: "RA", name: "Pod-RA", label: "Right foot", defaultColor: "green"  }
+    ];
+
+    const DEMO_ROUTE_TEMPLATE = [
+      { id: 1, x: 0.55, y: 0.74, w: 0.11, h: 0.11, type: "starting jug", targetLimb: "RW", limbName: "Right hand", isStart: true },
+      { id: 2, x: 0.36, y: 0.62, w: 0.11, h: 0.11, type: "edge hold",    targetLimb: "LW", limbName: "Left hand" },
+      { id: 3, x: 0.57, y: 0.84, w: 0.11, h: 0.11, type: "foothold",     targetLimb: "RA", limbName: "Right foot" },
+      { id: 4, x: 0.62, y: 0.48, w: 0.11, h: 0.11, type: "sidepull jug", targetLimb: "RW", limbName: "Right hand" },
+      { id: 5, x: 0.38, y: 0.72, w: 0.11, h: 0.11, type: "foothold",     targetLimb: "LA", limbName: "Left foot" },
+      { id: 6, x: 0.40, y: 0.34, w: 0.11, h: 0.11, type: "pocket hold",  targetLimb: "LW", limbName: "Left hand" },
+      { id: 7, x: 0.50, y: 0.18, w: 0.12, h: 0.12, type: "top hold",     targetLimb: "RW", limbName: "Right hand", isTop: true }
+    ];
+
+    function loadJson(key, fallback) {
+      try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback; } catch (e) { return fallback; }
+    }
+
+    const state = {
+      permissionsInitialized: false,
+      labMode: false,
+      activeLabStep: 1,
+      facingMode: "environment",
+
+      guidanceSource: localStorage.getItem("jarvis_guidance_source") || "live",
+      showOverlay: true,
+      labVisionHaptics: false,
+
+      podColors: loadJson("jarvis_pod_colors", { RW: "red", LW: "blue", RA: "green", LA: "yellow" }),
+      podAnchorEnabled: loadJson("jarvis_pod_anchor", false),
+      routeHoldColor: localStorage.getItem("jarvis_route_color") || "red",
+      liveSampledHue: null,
+      liveTargetLimb: "RW",
+      startBreakSec: Number(localStorage.getItem("jarvis_start_break") || "2.5"),
+      betweenHoldBreakSec: Number(localStorage.getItem("jarvis_hold_break") || "1.8"),
+      includeHoldType: true,
+      audioSim: true,
+
+      // Live Camera Feed Multi-Blob Detection
+      liveDetectedBlobs: [],
+      liveHoldBox: { found: false, x: 0.50, y: 0.40, w: 0.12, h: 0.12 },
+      lastLiveScanMs: 0,
+
+      // Wall Map Overlay
+      wallRefCaptured: false,
+      showWallRefOverlay: false,
+      activeRoute: [],
+      plannedVectors: [],
+
+      // Manual Bench Pod Tests
+      activePodTests: { LW: false, RW: false, LA: false, RA: false },
+      podTestTimers:  { LW: null,  RW: null,  LA: null,  RA: null  },
+
+      // Complete Lifecycle State Machine:
+      // UNINIT -> READY_TO_PAIR -> WALL_SCAN_PENDING -> SAFETY_PASSED -> PRE_START_BREAK -> CLIMBING <-> PAUSED -> SUMMIT -> DESCENDING
+      phase: "UNINIT",
+      phaseBeforeEmergency: "CLIMBING",
+      preStartBreakActive: false,
+      betweenHoldBreakActive: false,
+      startBreakTimerId: null,
+      betweenHoldTimerId: null,
+      emergencyActive: false,
+      standPitchDeg: 65,
+
+      // 7.5s Obstruction Grace + Auto-Recovery
+      obstructionStartMs: null,
+      clearStartMs: null,
+      lastObstructionCheckMs: 0,
+      lastActivePacket: { podKey: "RW", mode: 0, p1: 0, p2: 0 },
+
+      // Audio / Voice
+      audioCtx: null,
+      jarvisVoice: null,
+      lastSpokenMessage: "Welcome to Jarvis Paraclimb. Tap Button 1 once to start.",
+      speechRec: null,
+      findPhoneInterval: null,
+
+      // Vision Diagnostics (single loop token prevents duplicates / WebGL leaks)
+      poseModel: null,
+      handsModel: null,
+      visionLoopToken: 0,
+      poseReady: false,
+      handsReady: false,
+      fpsCount: 0,
+      fpsLastMs: performance.now(),
+      currentFps: 0,
+
+      // Pose + Dual-Hand State
+      rawPoseLandmarks: null,
+      rawHands: [],
+      poseDetected: false,
+      climberAnchored: false,
+      lastAnchorMatchMs: 0,
+      climberBounds: null,
+      limbs: {
+        LW: { x: 0.30, y: 0.78, vx: 0, vis: 0, clenched: false, curlRatio: 2.0, handSeenMs: 0 },
+        RW: { x: 0.70, y: 0.78, vx: 0, vis: 0, clenched: false, curlRatio: 2.0, handSeenMs: 0 },
+        LA: { x: 0.35, y: 0.92, vx: 0, vis: 0, clenched: true,  curlRatio: 1.0, handSeenMs: 0 },
+        RA: { x: 0.65, y: 0.92, vx: 0, vis: 0, clenched: true,  curlRatio: 1.0, handSeenMs: 0 }
+      },
+
+      // Climb Progress & Dwell Confirmation
+      currentMoveIndex: 0,
+      climbLog: [],
+      descentPlan: [],
+      descentIndex: -1,
+      dwellStartMs: null,
+      liveCooldown: false,
+      lastBleSendMs: 0,
+
+      pods: {
+        LW: { device: null, hapticChar: null },
+        RW: { device: null, hapticChar: null },
+        LA: { device: null, hapticChar: null },
+        RA: { device: null, hapticChar: null }
+      }
+    };
+
+    const videoEl    = document.getElementById("input-video");
+    const canvasEl   = document.getElementById("master-canvas");
+    const ctx        = canvasEl.getContext("2d", { willReadFrequently: true });
+    const statusEl   = document.getElementById("live-status");
+
+    const workCanvas = document.createElement("canvas");
+    workCanvas.width = 320;
+    workCanvas.height = 240;
+    const workCtx = workCanvas.getContext("2d", { willReadFrequently: true });
+
+    const wallRefCanvas = document.createElement("canvas");
+    wallRefCanvas.width = 320;
+    wallRefCanvas.height = 240;
+    const wallRefCtx = wallRefCanvas.getContext("2d", { willReadFrequently: true });
+
+    // =========================================================================
+    // 1. ACCESSIBLE EARCONS & VOICE ENGINE ("REPEAT" MEMORY)
+    // =========================================================================
+    function ensureAudioCtx() {
+      if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (state.audioCtx.state === "suspended") state.audioCtx.resume();
+      return state.audioCtx;
+    }
+
+    function playEarcon(type = "tap") {
+      try {
+        const ac = ensureAudioCtx();
+        const now = ac.currentTime;
+        const tone = (freq, start, dur, vol = 0.08, wave = "sine") => {
+          const osc = ac.createOscillator(), g = ac.createGain();
+          osc.type = wave;
+          osc.frequency.setValueAtTime(freq, now + start);
+          g.gain.setValueAtTime(vol, now + start);
+          g.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
+          osc.connect(g); g.connect(ac.destination);
+          osc.start(now + start); osc.stop(now + start + dur + 0.01);
+        };
+        if (type === "tap")        { tone(880, 0, 0.06, 0.06); }
+        else if (type === "ok")    { tone(660, 0, 0.08); tone(990, 0.09, 0.12); }
+        else if (type === "tick")  { tone(520, 0, 0.04, 0.04); }
+        else if (type === "lock")  { tone(1046, 0, 0.07, 0.11); tone(1318, 0.10, 0.10, 0.11); }
+        else if (type === "warn")  { tone(440, 0, 0.14, 0.10, "triangle"); tone(370, 0.16, 0.16, 0.10, "triangle"); }
+        else if (type === "emerg") { tone(740, 0, 0.12, 0.14, "sawtooth"); tone(554, 0.14, 0.12, 0.14, "sawtooth"); tone(440, 0.28, 0.22, 0.14, "sawtooth"); }
+        else if (type === "beacon"){ tone(1174, 0, 0.18, 0.22); tone(1760, 0.22, 0.22, 0.22); }
+      } catch (e) {}
+    }
+
+    function selectVoice() {
+      if (!("speechSynthesis" in window)) return;
+      const voices = window.speechSynthesis.getVoices();
+      if (!voices || !voices.length) return;
+      const preferred = ["Daniel", "Arthur", "Oliver", "Google UK English Male", "Samantha", "en-GB", "en-US"];
+      for (const p of preferred) {
+        const m = voices.find(v => v.name.includes(p) || (v.lang && v.lang.includes(p)));
+        if (m) { state.jarvisVoice = m; return; }
+      }
+      state.jarvisVoice = voices[0];
+    }
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.onvoiceschanged = selectVoice;
+      selectVoice();
+    }
+
+    function speak(text, priority = true, saveForRepeat = true) {
+      statusEl.textContent = text;
+      if (saveForRepeat && text && text.trim()) state.lastSpokenMessage = text;
+      if (!("speechSynthesis" in window)) return;
+      if (!state.jarvisVoice) selectVoice();
+      if (priority) window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      if (state.jarvisVoice) u.voice = state.jarvisVoice;
+      u.rate = 1.02; u.pitch = 0.94;
+      window.speechSynthesis.speak(u);
+    }
+
+    function repeatLastMessage() {
+      playEarcon("tap");
+      speak(state.lastSpokenMessage, true, false);
+    }
+
+    // =========================================================================
+    // 2. SINGLE-PROMPT INITIALIZATION
+    // =========================================================================
+    async function initializeSystemOnce() {
+      if (state.permissionsInitialized) return true;
+      state.permissionsInitialized = true;
+      ensureAudioCtx();
+      playEarcon("ok");
+      speak("Jarvis initializing. Please allow camera, microphone, and motion once.", true);
+
+      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        try {
+          const perm = await DeviceOrientationEvent.requestPermission();
+          if (perm === "granted") window.addEventListener("deviceorientation", handleTiltSensor);
+        } catch (e) {}
+      } else {
+        window.addEventListener("deviceorientation", handleTiltSensor);
+      }
+
+      const camOk = await startCameraStream(state.facingMode);
+      initSpeechRecognition();
+
+      if ("wakeLock" in navigator) {
+        try { await navigator.wakeLock.request("screen"); } catch (e) {}
+      }
+
+      state.phase = "READY_TO_PAIR";
+      updatePhoneZoneLabels();
+
+      setTimeout(() => {
+        if (camOk) {
+          speak("System ready. Button 1 pairs pods. Button 2 repeats my last message. Button 3 skips pairing to safety check. Button 4 stops motors or finds your phone.", true);
+        } else {
+          speak("Camera permission was blocked. Please allow camera in Bluefy settings, then reload.", true);
+        }
+      }, 950);
+      return true;
+    }
+
+    async function startCameraStream(facing) {
+      try {
+        if (videoEl.srcObject) videoEl.srcObject.getTracks().forEach(t => t.stop());
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facing }, width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false
+        });
+        videoEl.srcObject = stream;
+        await videoEl.play();
+        document.getElementById("engine-dot").classList.add("live");
+        startVisionEngine();
+        return true;
+      } catch (err) {
+        document.getElementById("chip-pose").textContent = "CAM ERROR";
+        document.getElementById("diag-pose").textContent = "Camera blocked: " + err.message;
+        return false;
+      }
+    }
+
+    // =========================================================================
+    // 3. COLOR CLUSTERING (USED BY BOTH LIVE CAMERA FEED & WALL MAP OVERLAY)
+    // =========================================================================
+    function rgbToHsl(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h = 0, s = 0, l = (max + min) / 2;
+      if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h /= 6;
+      }
+      return [h * 360, s * 100, l * 100];
+    }
+
+    function hueDiff(h1, h2) {
+      const d = Math.abs(h1 - h2) % 360;
+      return d > 180 ? 360 - d : d;
+    }
+
+    // Shared BFS connected-component detector (prevents multi-hold averaging into empty space!)
+    function detectColorBlobsOnCanvas(sourceCtx, w, h, targetHue, tol) {
+      const img = sourceCtx.getImageData(0, 0, w, h).data;
+      const cell = 4;
+      const gw = Math.floor(w / cell), gh = Math.floor(h / cell);
+      const mask = new Uint8Array(gw * gh);
+
+      for (let gy = 0; gy < gh; gy++) {
+        for (let gx = 0; gx < gw; gx++) {
+          const i = ((gy * cell) * w + (gx * cell)) * 4;
+          const [ph, ps, pl] = rgbToHsl(img[i], img[i + 1], img[i + 2]);
+          if (ps > 30 && pl > 15 && pl < 86 && hueDiff(ph, targetHue) <= tol) mask[gy * gw + gx] = 1;
+        }
+      }
+
+      const visited = new Uint8Array(gw * gh);
+      const blobs = [];
+      const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+
+      for (let gy = 0; gy < gh; gy++) {
+        for (let gx = 0; gx < gw; gx++) {
+          const idx = gy * gw + gx;
+          if (!mask[idx] || visited[idx]) continue;
+          const q = [[gx, gy]];
+          visited[idx] = 1;
+          let count = 0, minX = gx, maxX = gx, minY = gy, maxY = gy, sumX = 0, sumY = 0;
+          while (q.length) {
+            const [cx, cy] = q.pop();
+            count++; sumX += cx; sumY += cy;
+            if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
+            if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
+            for (const [dx, dy] of dirs) {
+              const nx = cx + dx, ny = cy + dy;
+              if (nx >= 0 && nx < gw && ny >= 0 && ny < gh) {
+                const nIdx = ny * gw + nx;
+                if (mask[nIdx] && !visited[nIdx]) { visited[nIdx] = 1; q.push([nx, ny]); }
+              }
+            }
+          }
+          if (count >= 4 && count <= 350) {
+            blobs.push({
+              x: (sumX / count) / gw,
+              y: (sumY / count) / gh,
+              w: Math.max(0.08, Math.min(0.26, ((maxX - minX + 2) / gw) * 1.2)),
+              h: Math.max(0.08, Math.min(0.26, ((maxY - minY + 2) / gh) * 1.2)),
+              area: count
+            });
+          }
+        }
+      }
+      blobs.sort((a, b) => b.area - a.area);
+      return blobs.slice(0, 12);
+    }
+
+    function setGuidanceSource(mode) {
+      state.guidanceSource = (mode === "map") ? "map" : "live";
+      localStorage.setItem("jarvis_guidance_source", state.guidanceSource);
+
+      const isLive = state.guidanceSource === "live";
+      document.getElementById("btn-mode-live").classList.toggle("selected", isLive);
+      document.getElementById("btn-mode-map").classList.toggle("selected", !isLive);
+      document.getElementById("chip-mode").textContent = isLive ? "MODE: LIVE CAM" : `MODE: WALL MAP (${state.activeRoute.length})`;
+      document.getElementById("chip-mode").style.color = isLive ? "#00e676" : "#ffea00";
+      document.getElementById("phone-mode-txt").textContent = isLive ? "LIVE CAM" : `MAP (${state.activeRoute.length})`;
+
+      document.getElementById("canvas-hint").textContent = isLive
+        ? "LIVE CAMERA MODE: Detects distinct holds directly from live video (no static map overlay). Tap any hold on video to sample its color."
+        : "WALL MAP OVERLAY MODE: Uses static hitboxes & planned vectors. Tap Capture Wall Map, Load Demo Map, or tap canvas to place boxes.";
+
+      updatePhoneZoneLabels();
+      playEarcon("tap");
+    }
+
+    function toggleVisualOverlay() {
+      state.showOverlay = !state.showOverlay;
+      const b = document.getElementById("btn-toggle-overlay");
+      b.textContent = state.showOverlay ? "Overlay: ON" : "Overlay: OFF";
+      b.classList.toggle("selected", state.showOverlay);
+      playEarcon("tap");
+    }
+
+    function toggleLabVisionHaptics() {
+      state.labVisionHaptics = !state.labVisionHaptics;
+      const b = document.getElementById("btn-vision-haptics");
+      b.textContent = state.labVisionHaptics ? "Vision Haptics: ON" : "Vision Haptics: OFF";
+      b.classList.toggle("selected", state.labVisionHaptics);
+      if (!state.labVisionHaptics) stopAllPods();
+      playEarcon("tap");
+    }
+
+    function trackLiveHoldFromCameraFeed(now) {
+      if (now - state.lastLiveScanMs < 140) return; // ~7 Hz clustering for smooth performance
+      state.lastLiveScanMs = now;
+
+      const targetHue = state.liveSampledHue !== null
+        ? state.liveSampledHue
+        : (COLOR_OPTIONS[state.routeHoldColor] || COLOR_OPTIONS.red).hue;
+      const tol = parseFloat(document.getElementById("hue-tol")?.value) || 26;
+
+      const blobs = detectColorBlobsOnCanvas(workCtx, workCanvas.width, workCanvas.height, targetHue, tol);
+      state.liveDetectedBlobs = blobs;
+
+      if (blobs.length === 0) {
+        state.liveHoldBox.found = false;
+        return;
+      }
+
+      // Filter out holds already locked in climbLog so she naturally progresses up the wall
+      const remaining = blobs.filter(b =>
+        !state.climbLog.some(logged => Math.hypot(b.x - logged.x, b.y - logged.y) < 0.09)
+      );
+      const candidates = remaining.length > 0 ? remaining : blobs;
+
+      // Pick the hold closest/above the active limb
+      const limb = state.limbs[state.liveTargetLimb] || { x: 0.5, y: 0.75 };
+      let best = candidates[0];
+      let bestScore = Infinity;
+      for (const c of candidates) {
+        const d = Math.hypot(c.x - limb.x, c.y - limb.y);
+        // Slightly prefer holds higher than or level with the limb during ascent
+        const penalty = (c.y > limb.y + 0.12) ? 0.25 : 0;
+        if (d + penalty < bestScore) { bestScore = d + penalty; best = c; }
+      }
+
+      state.liveHoldBox.found = true;
+      state.liveHoldBox.x = state.liveHoldBox.x * 0.45 + best.x * 0.55;
+      state.liveHoldBox.y = state.liveHoldBox.y * 0.45 + best.y * 0.55;
+      state.liveHoldBox.w = best.w;
+      state.liveHoldBox.h = best.h;
+    }
+
+    function captureWallReferenceAndPlan() {
+      if (!videoEl.srcObject || videoEl.readyState < 2) {
+        speak("Camera not ready yet. Please enable camera first.", true);
+        return false;
+      }
+      wallRefCtx.drawImage(videoEl, 0, 0, wallRefCanvas.width, wallRefCanvas.height);
+      state.wallRefCaptured = true;
+
+      const targetHue = (COLOR_OPTIONS[state.routeHoldColor] || COLOR_OPTIONS.red).hue;
+      const tol = parseFloat(document.getElementById("hue-tol")?.value) || 26;
+      const blobs = detectColorBlobsOnCanvas(wallRefCtx, wallRefCanvas.width, wallRefCanvas.height, targetHue, tol);
+
+      if (blobs.length >= 1) {
+        rebuildRouteAndVectorsFromHitboxes(blobs);
+        setGuidanceSource("map");
+        playEarcon("ok");
+        speak(`Wall scanned. Locked ${state.activeRoute.length} ${COLOR_OPTIONS[state.routeHoldColor].label} holds into Wall Map Overlay.`, true);
+      } else {
+        setGuidanceSource("live");
+        playEarcon("warn");
+        speak(`No ${COLOR_OPTIONS[state.routeHoldColor].label} holds found in snapshot. Staying in Live Camera Mode.`, true);
+      }
+      return true;
+    }
+
+    function loadDemoMappingOverlay() {
+      rebuildRouteAndVectorsFromHitboxes(DEMO_ROUTE_TEMPLATE);
+      setGuidanceSource("map");
+      state.showOverlay = true;
+      document.getElementById("btn-toggle-overlay").textContent = "Overlay: ON";
+      document.getElementById("btn-toggle-overlay").classList.add("selected");
+      speak("Loaded 7-hold demo mapping overlay for testing.", true);
+    }
+
+    function clearAllOverlayBoxes() {
+      state.activeRoute = [];
+      state.plannedVectors = [];
+      state.wallRefCaptured = false;
+      state.showWallRefOverlay = false;
+      state.liveSampledHue = null;
+      document.getElementById("btn-ref-overlay").classList.remove("selected");
+      document.getElementById("btn-ref-overlay").textContent = "Ref Ghost: OFF";
+      document.getElementById("planned-count").textContent = "0";
+      setGuidanceSource("live");
+      speak("All overlay boxes cleared. Switched to Live Camera Feed.", true);
+    }
+
+    function undoLastWallHitbox() {
+      if (state.activeRoute.length === 0) return;
+      rebuildRouteAndVectorsFromHitboxes(state.activeRoute.slice(0, -1));
+      playEarcon("tap");
+    }
+
+    function rebuildRouteAndVectorsFromHitboxes(boxes) {
+      if (!boxes || boxes.length === 0) {
+        state.activeRoute = [];
+        state.plannedVectors = [];
+        document.getElementById("planned-count").textContent = "0";
+        return;
+      }
+      const sorted = boxes.slice().sort((a, b) => b.y - a.y);
+      state.activeRoute = sorted.map((b, idx) => {
+        let chosen;
+        if (idx === 0 || idx === sorted.length - 1) chosen = { key: "RW", name: "Right hand" };
+        else if (b.y > 0.72) chosen = (b.x >= 0.5) ? { key: "RA", name: "Right foot" } : { key: "LA", name: "Left foot" };
+        else chosen = (b.x >= 0.5) ? { key: "RW", name: "Right hand" } : { key: "LW", name: "Left hand" };
+
+        const hType = idx === 0 ? "starting hold"
+                    : idx === sorted.length - 1 ? "top hold"
+                    : (chosen.key === "RA" || chosen.key === "LA") ? "foothold"
+                    : "hold";
+        return {
+          id: idx + 1,
+          x: b.x, y: b.y,
+          w: b.w || 0.11, h: b.h || 0.11,
+          type: b.type || hType,
+          targetLimb: b.targetLimb || chosen.key,
+          limbName: b.limbName || chosen.name,
+          isStart: idx === 0,
+          isTop: idx === sorted.length - 1
+        };
+      });
+
+      state.plannedVectors = [];
+      for (let i = 1; i < state.activeRoute.length; i++) {
+        const a = state.activeRoute[i - 1], b = state.activeRoute[i];
+        const cd = computeClockAndDistance(a.x, a.y, b.x, b.y);
+        state.plannedVectors.push({ fromId: a.id, toId: b.id, x1: a.x, y1: a.y, x2: b.x, y2: b.y, hour: cd.hour, distText: cd.distText });
+      }
+      state.currentMoveIndex = 0;
+      document.getElementById("planned-count").textContent = String(state.activeRoute.length);
+      if (state.guidanceSource === "map") {
+        document.getElementById("chip-mode").textContent = `MODE: WALL MAP (${state.activeRoute.length})`;
+      }
+    }
+
+    function toggleWallRefOverlay() {
+      state.showWallRefOverlay = !state.showWallRefOverlay;
+      const b = document.getElementById("btn-ref-overlay");
+      b.textContent = state.showWallRefOverlay ? "Ref Ghost: ON" : "Ref Ghost: OFF";
+      b.classList.toggle("selected", state.showWallRefOverlay);
+    }
+
+    canvasEl.addEventListener("click", (e) => {
+      if (!state.labMode) return;
+      const rect = canvasEl.getBoundingClientRect();
+      const nx = (e.clientX - rect.left) / rect.width;
+      const ny = (e.clientY - rect.top) / rect.height;
+
+      if (state.guidanceSource === "live") {
+        const cx = Math.floor(nx * workCanvas.width);
+        const cy = Math.floor(ny * workCanvas.height);
+        const patch = workCtx.getImageData(Math.max(0, cx - 2), Math.max(0, cy - 2), 5, 5).data;
+        let r = 0, g = 0, b = 0, c = 0;
+        for (let i = 0; i < patch.length; i += 4) { r += patch[i]; g += patch[i + 1]; b += patch[i + 2]; c++; }
+        const [h] = rgbToHsl(r / c, g / c, b / c);
+        state.liveSampledHue = h;
+        state.liveHoldBox = { found: true, x: nx, y: ny, w: 0.12, h: 0.12 };
+        state.liveCooldown = false;
+        playEarcon("tap");
+        speak("Sampled live hold color from camera feed.", true);
+      } else {
+        if (!state.wallRefCaptured && videoEl.readyState >= 2) {
+          wallRefCtx.drawImage(videoEl, 0, 0, wallRefCanvas.width, wallRefCanvas.height);
+          state.wallRefCaptured = true;
+        }
+        const existing = state.activeRoute.slice();
+        existing.push({ x: nx, y: ny, w: 0.11, h: 0.11 });
+        rebuildRouteAndVectorsFromHitboxes(existing);
+        playEarcon("tap");
+      }
+    });
+
+    // =========================================================================
+    // 4. WEBGL-SAFE MEDIAPIPE POSE + DUAL-HAND GRIP ENGINE
+    // =========================================================================
+    function startVisionEngine() {
+      const myToken = ++state.visionLoopToken;
+
+      if (!state.poseModel && typeof Pose !== "undefined") {
+        try {
+          state.poseModel = new Pose({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
+          state.poseModel.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.45, minTrackingConfidence: 0.45 });
+          state.poseModel.onResults(onPoseResults);
+          state.poseReady = true;
+          document.getElementById("diag-pose").textContent = "Loaded";
+        } catch (e) { document.getElementById("diag-pose").textContent = "Err: " + e.message; }
+      }
+
+      if (!state.handsModel && typeof Hands !== "undefined") {
+        try {
+          state.handsModel = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+          state.handsModel.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.45, minTrackingConfidence: 0.45 });
+          state.handsModel.onResults(onHandsResults);
+          state.handsReady = true;
+          document.getElementById("diag-hands").textContent = "Loaded (2 Hands)";
+        } catch (e) { document.getElementById("diag-hands").textContent = "Err: " + e.message; }
+      }
+
+      async function visionLoop() {
+        if (state.visionLoopToken !== myToken) return;
+        const now = performance.now();
+
+        if (videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
+          workCtx.drawImage(videoEl, 0, 0, workCanvas.width, workCanvas.height);
+          checkCameraObstruction(now);
+
+          if (state.labMode) {
+            if (canvasEl.width !== videoEl.videoWidth || canvasEl.height !== videoEl.videoHeight) {
+              canvasEl.width = videoEl.videoWidth;
+              canvasEl.height = videoEl.videoHeight;
+            }
+            ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+            if (state.guidanceSource === "map" && state.wallRefCaptured && state.showWallRefOverlay) {
+              ctx.save();
+              ctx.globalAlpha = 0.35;
+              ctx.drawImage(wallRefCanvas, 0, 0, canvasEl.width, canvasEl.height);
+              ctx.restore();
+            }
+          }
+
+          if (!state.emergencyActive) {
+            if (state.guidanceSource === "live") trackLiveHoldFromCameraFeed(now);
+            if (state.poseModel && state.poseReady) {
+              try { await state.poseModel.send({ image: videoEl }); } catch (e) {}
+            }
+            if (state.handsModel && state.handsReady) {
+              try { await state.handsModel.send({ image: videoEl }); } catch (e) {}
+            }
+            if (state.labMode && state.showOverlay) drawLabOverlay();
+            if (!state.preStartBreakActive && !state.betweenHoldBreakActive) {
+              evaluateHoldGuidanceAndPackets();
+            }
+          } else if (state.labMode) {
+            drawEmergencyOverlay();
+          }
+
+          state.fpsCount++;
+          if (now - state.fpsLastMs >= 1000) {
+            state.currentFps = state.fpsCount;
+            state.fpsCount = 0;
+            state.fpsLastMs = now;
+            document.getElementById("chip-fps").textContent = `${state.currentFps} FPS`;
+          }
+        }
+        requestAnimationFrame(visionLoop);
+      }
+      requestAnimationFrame(visionLoop);
+    }
+
+    function restartVisionEngine() {
+      startVisionEngine();
+      playEarcon("tap");
+    }
+
+    function checkPodsOnWorkCanvas(lm) {
+      const w = workCanvas.width, h = workCanvas.height;
+      const tol = (parseFloat(document.getElementById("hue-tol")?.value) || 26) + 8;
+      const map = { LW: 15, RW: 16, LA: 27, RA: 28 };
+      let matched = 0;
+
+      Object.entries(map).forEach(([key, idx]) => {
+        const pt = lm[idx];
+        let hitFound = false;
+        if (pt && pt.visibility > 0.30) {
+          const targetHue = (COLOR_OPTIONS[state.podColors[key]] || COLOR_OPTIONS.red).hue;
+          const cx = Math.floor(pt.x * w), cy = Math.floor(pt.y * h);
+          const r = 14;
+          const x0 = Math.max(0, cx - r), y0 = Math.max(0, cy - r);
+          const bw = Math.min(w - x0, r * 2), bh = Math.min(h - y0, r * 2);
+          if (bw >= 4 && bh >= 4) {
+            const patch = workCtx.getImageData(x0, y0, bw, bh).data;
+            let hits = 0;
+            for (let i = 0; i < patch.length; i += 8) {
+              const [ph, ps, pl] = rgbToHsl(patch[i], patch[i + 1], patch[i + 2]);
+              if (ps > 24 && pl > 14 && pl < 88 && hueDiff(ph, targetHue) <= tol) hits++;
+            }
+            if (hits >= 3) { hitFound = true; matched++; }
+          }
+        }
+        const el = document.getElementById(`match-${key}`);
+        if (el) { el.textContent = hitFound ? "MATCHED" : "Searching"; el.style.color = hitFound ? "#00e676" : "#b0bec5"; }
+      });
+      return matched;
+    }
+
+    function onPoseResults(results) {
+      const now = performance.now();
+      if (!results.poseLandmarks) {
+        state.poseDetected = false;
+        state.rawPoseLandmarks = null;
+        document.getElementById("chip-pose").textContent = "POSE: SEARCHING";
+        document.getElementById("chip-pose").style.color = "#ff9100";
+        document.getElementById("diag-pose").textContent = "No body in view";
+        return;
+      }
+
+      const lm = results.poseLandmarks;
+      const matchedPods = checkPodsOnWorkCanvas(lm);
+      if (matchedPods >= 1) state.lastAnchorMatchMs = now;
+
+      let minX = 1, maxX = 0, minY = 1, maxY = 0;
+      for (const idx of [11, 12, 15, 16, 23, 24, 27, 28]) {
+        if (lm[idx] && lm[idx].visibility > 0.25) {
+          minX = Math.min(minX, lm[idx].x); maxX = Math.max(maxX, lm[idx].x);
+          minY = Math.min(minY, lm[idx].y); maxY = Math.max(maxY, lm[idx].y);
+        }
+      }
+      const bounds = { minX: minX - 0.14, maxX: maxX + 0.14, minY: minY - 0.14, maxY: maxY + 0.14 };
+      const anchorValid = !state.podAnchorEnabled || (matchedPods >= 1) || ((now - state.lastAnchorMatchMs) < 3500);
+
+      if (!anchorValid) {
+        state.climberAnchored = false;
+        state.rawPoseLandmarks = null;
+        document.getElementById("chip-pose").textContent = "POSE: IGNORED (NO PODS)";
+        document.getElementById("chip-pose").style.color = "#ff9100";
+        return;
+      }
+
+      state.poseDetected = true;
+      state.climberAnchored = true;
+      state.rawPoseLandmarks = lm;
+      state.climberBounds = bounds;
+
+      updateLimbFromPose("LW", lm[15]);
+      updateLimbFromPose("RW", lm[16]);
+      updateLimbFromPose("LA", lm[27]);
+      updateLimbFromPose("RA", lm[28]);
+
+      document.getElementById("chip-pose").textContent = state.podAnchorEnabled ? `POSE: LOCKED (${matchedPods}/4)` : "POSE: TRACKING";
+      document.getElementById("chip-pose").style.color = "#00e676";
+      document.getElementById("diag-pose").textContent = "TRACKING (33 pts)";
+      document.getElementById("diag-wrists").textContent =
+        `L(${state.limbs.LW.x.toFixed(2)},${state.limbs.LW.y.toFixed(2)}) R(${state.limbs.RW.x.toFixed(2)},${state.limbs.RW.y.toFixed(2)})`;
+      document.getElementById("diag-ankles").textContent =
+        `L(${state.limbs.LA.x.toFixed(2)},${state.limbs.LA.y.toFixed(2)}) R(${state.limbs.RA.x.toFixed(2)},${state.limbs.RA.y.toFixed(2)})`;
+    }
+
+    function updateLimbFromPose(key, pt) {
+      if (!pt || pt.visibility < 0.25) return;
+      const prev = state.limbs[key];
+      const vx = Math.hypot(pt.x - prev.x, pt.y - prev.y);
+      state.limbs[key] = { ...prev, x: prev.x * 0.35 + pt.x * 0.65, y: prev.y * 0.35 + pt.y * 0.65, vx, vis: pt.visibility };
+    }
+
+    function onHandsResults(results) {
+      const now = performance.now();
+      const detected = [];
+      const seenKeys = new Set();
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+          const hand = results.multiHandLandmarks[i];
+          const px = (hand[0].x + hand[9].x) * 0.5;
+          const py = (hand[0].y + hand[9].y) * 0.5;
+
+          if (state.podAnchorEnabled && state.climberBounds) {
+            const b = state.climberBounds;
+            if (px < b.minX || px > b.maxX || py < b.minY || py > b.maxY) continue;
+          }
+
+          const mpLabel = (results.multiHandedness && results.multiHandedness[i]) ? results.multiHandedness[i].label : "Right";
+          let key = (state.facingMode === "environment")
+            ? (mpLabel === "Left" ? "RW" : "LW")
+            : (mpLabel === "Left" ? "LW" : "RW");
+
+          if (state.poseDetected && state.limbs.LW.vis > 0.25 && state.limbs.RW.vis > 0.25) {
+            const dL = Math.hypot(px - state.limbs.LW.x, py - state.limbs.LW.y);
+            const dR = Math.hypot(px - state.limbs.RW.x, py - state.limbs.RW.y);
+            const nearest = dL <= dR ? "LW" : "RW";
+            key = !seenKeys.has(nearest) ? nearest : (nearest === "LW" ? "RW" : "LW");
+          } else if (seenKeys.has(key)) {
+            key = (key === "LW") ? "RW" : "LW";
+          }
+          seenKeys.add(key);
+
+          const wrist = hand[0];
+          const tipDist = [8, 12, 16, 20].reduce((a, idx) => a + Math.hypot(hand[idx].x - wrist.x, hand[idx].y - wrist.y), 0) / 4;
+          const mcpDist = [5, 9, 13, 17].reduce((a, j) => a + Math.hypot(hand[j].x - wrist.x, hand[j].y - wrist.y), 0) / 4;
+          const curlRatio = tipDist / (mcpDist + 1e-5);
+          const isClenched = curlRatio < 1.38;
+
+          const prev = state.limbs[key];
+          const vx = Math.hypot(px - prev.x, py - prev.y);
+          state.limbs[key] = { ...prev, x: px, y: py, vx, vis: 1.0, clenched: isClenched, curlRatio, handSeenMs: now };
+          detected.push({ key, landmarks: hand, clenched: isClenched, curlRatio });
+        }
+      }
+
+      ["LW", "RW"].forEach(k => {
+        if (!seenKeys.has(k) && (now - state.limbs[k].handSeenMs) > 450) state.limbs[k].clenched = false;
+      });
+
+      state.rawHands = detected;
+      const lhSeen = (now - state.limbs.LW.handSeenMs) <= 450;
+      const rhSeen = (now - state.limbs.RW.handSeenMs) <= 450;
+
+      const lhTxt = lhSeen ? (state.limbs.LW.clenched ? `FIST (${state.limbs.LW.curlRatio.toFixed(2)})` : `OPEN (${state.limbs.LW.curlRatio.toFixed(2)})`) : "Unseen (Hitbox Timer)";
+      const rhTxt = rhSeen ? (state.limbs.RW.clenched ? `FIST (${state.limbs.RW.curlRatio.toFixed(2)})` : `OPEN (${state.limbs.RW.curlRatio.toFixed(2)})`) : "Unseen (Hitbox Timer)";
+
+      document.getElementById("diag-lh-grip").textContent = lhTxt;
+      document.getElementById("diag-lh-grip").style.color = lhSeen ? (state.limbs.LW.clenched ? "#00e676" : "#00e5ff") : "#ffea00";
+      document.getElementById("diag-rh-grip").textContent = rhTxt;
+      document.getElementById("diag-rh-grip").style.color = rhSeen ? (state.limbs.RW.clenched ? "#00e676" : "#00e5ff") : "#ffea00";
+
+      document.getElementById("chip-hands").textContent = `LH:${lhSeen ? (state.limbs.LW.clenched ? "FIST" : "OPEN") : "--"} | RH:${rhSeen ? (state.limbs.RW.clenched ? "FIST" : "OPEN") : "--"}`;
+      document.getElementById("diag-hands").textContent = `Tracking ${detected.length}/2 hands`;
+    }
+
+    // =========================================================================
+    // 5. LAB OVERLAY
+    // =========================================================================
+    const POSE_CONNECTIONS = [
+      [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+      [11, 23], [12, 24], [23, 24],
+      [23, 25], [25, 27], [24, 26], [26, 28]
+    ];
+
+    function drawLabOverlay() {
+      const w = canvasEl.width, h = canvasEl.height;
+
+      if (state.guidanceSource === "map") {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 234, 0, 0.48)";
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 2;
+        state.plannedVectors.forEach(v => {
+          ctx.beginPath(); ctx.moveTo(v.x1 * w, v.y1 * h); ctx.lineTo(v.x2 * w, v.y2 * h); ctx.stroke();
+        });
+        ctx.restore();
+
+        state.activeRoute.forEach((hold, idx) => {
+          const tx = hold.x * w, ty = hold.y * h;
+          const bw = (hold.w || 0.11) * w, bh = (hold.h || 0.11) * h;
+          const isCurrent = (idx === state.currentMoveIndex);
+          ctx.strokeStyle = isCurrent ? "#00e676" : (idx < state.currentMoveIndex ? "rgba(0,229,255,0.4)" : "rgba(255,255,255,0.55)");
+          ctx.lineWidth = isCurrent ? 3.5 : 1.8;
+          ctx.strokeRect(tx - bw / 2, ty - bh / 2, bw, bh);
+          ctx.fillStyle = isCurrent ? "#00e676" : "#cfd8dc";
+          ctx.font = "bold 11px monospace";
+          ctx.fillText(`H${hold.id}:${hold.targetLimb}`, tx - bw / 2, ty - bh / 2 - 4);
+        });
+      }
+
+      if (state.guidanceSource === "live") {
+        // Subtle outline around all detected live holds; bright green on active selected hold
+        state.liveDetectedBlobs.forEach(b => {
+          ctx.strokeStyle = "rgba(255,255,255,0.35)";
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect((b.x - b.w / 2) * w, (b.y - b.h / 2) * h, b.w * w, b.h * h);
+        });
+        if (state.liveHoldBox.found) {
+          const b = state.liveHoldBox;
+          const tx = b.x * w, ty = b.y * h, bw = b.w * w, bh = b.h * h;
+          ctx.strokeStyle = "#00e676";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(tx - bw / 2, ty - bh / 2, bw, bh);
+          ctx.fillStyle = "#00e676";
+          ctx.font = "bold 11px monospace";
+          ctx.fillText(`LIVE HOLD (${state.liveTargetLimb})`, tx - bw / 2, ty - bh / 2 - 5);
+        }
+      }
+
+      if (state.rawPoseLandmarks) {
+        const lm = state.rawPoseLandmarks;
+        ctx.strokeStyle = "rgba(0, 229, 255, 0.85)";
+        ctx.lineWidth = 3;
+        for (const [a, b] of POSE_CONNECTIONS) {
+          if (lm[a] && lm[b] && lm[a].visibility > 0.25 && lm[b].visibility > 0.25) {
+            ctx.beginPath(); ctx.moveTo(lm[a].x * w, lm[a].y * h); ctx.lineTo(lm[b].x * w, lm[b].y * h); ctx.stroke();
+          }
+        }
+        const limbIdx = { LW: 15, RW: 16, LA: 27, RA: 28 };
+        Object.entries(limbIdx).forEach(([k, idx]) => {
+          if (lm[idx] && lm[idx].visibility > 0.25) {
+            const cObj = COLOR_OPTIONS[state.podColors[k]] || COLOR_OPTIONS.cyan;
+            ctx.strokeStyle = cObj.hex;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(lm[idx].x * w - 14, lm[idx].y * h - 14, 28, 28);
+          }
+        });
+      }
+
+      state.rawHands.forEach(handObj => {
+        const col = (COLOR_OPTIONS[state.podColors[handObj.key]] || COLOR_OPTIONS.yellow).hex;
+        handObj.landmarks.forEach(pt => {
+          ctx.fillStyle = handObj.clenched ? "#00e676" : col;
+          ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, 3.8, 0, Math.PI * 2); ctx.fill();
+        });
+        const wrist = handObj.landmarks[0];
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 12px monospace";
+        ctx.fillText(`${handObj.key === "LW" ? "LH" : "RH"}:${handObj.clenched ? "FIST" : "OPEN"}`, wrist.x * w - 18, wrist.y * h + 18);
+      });
+
+      const target = getActiveTargetHold();
+      if (target && target.found && (state.poseDetected || state.rawHands.length > 0)) {
+        const limb = state.limbs[target.targetLimb];
+        if (limb && limb.vis > 0.25) {
+          ctx.strokeStyle = "#ffea00";
+          ctx.lineWidth = 2.8;
+          ctx.beginPath(); ctx.moveTo(limb.x * w, limb.y * h); ctx.lineTo(target.x * w, target.y * h); ctx.stroke();
+        }
+      }
+    }
+
+    function drawEmergencyOverlay() {
+      ctx.fillStyle = "rgba(180, 15, 35, 0.45)";
+      ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 22px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("EMERGENCY SAFETY MODE — MOTORS OFF", canvasEl.width / 2, canvasEl.height / 2);
+      ctx.textAlign = "left";
+    }
+
+    // =========================================================================
+    // 6. 7.5s OBSTRUCTION GRACE (SAFE PULSE HOLD) + TILT <25° + AUTO-RECOVERY
+    // =========================================================================
+    function handleTiltSensor(evt) {
+      if (typeof evt.beta !== "number") return;
+      const pitchDeg = Math.round(Math.abs(evt.beta));
+      state.standPitchDeg = pitchDeg;
+      const txt = pitchDeg < 25 ? `${pitchDeg}° TIPPED!` : `${pitchDeg}° OK`;
+      document.getElementById("phone-tilt-txt").textContent = txt;
+      document.getElementById("diag-tilt").textContent = txt;
+
+      if (pitchDeg < 25 && !state.emergencyActive && state.phase === "CLIMBING") {
+        enterEmergencyMode("Phone stand fell down");
+      } else if (pitchDeg >= 35 && state.emergencyActive && !state.obstructionStartMs) {
+        exitEmergencyMode("Phone stand upright again");
+      }
+    }
+
+    function checkCameraObstruction(now) {
+      if (now - state.lastObstructionCheckMs < 250) return;
+      state.lastObstructionCheckMs = now;
+
+      const w = workCanvas.width, h = workCanvas.height;
+      const data = workCtx.getImageData(0, 0, w, h).data;
+      let sum = 0, sumSq = 0, n = 0;
+      for (let y = 0; y < h; y += 16) {
+        for (let x = 0; x < w; x += 16) {
+          const i = (y * w + x) * 4;
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          sum += lum; sumSq += lum * lum; n++;
+        }
+      }
+      const mean = sum / Math.max(1, n);
+      const stdDev = Math.sqrt(Math.max(0, (sumSq / Math.max(1, n)) - mean * mean));
+      document.getElementById("diag-lum").textContent = `${mean.toFixed(0)} / ${stdDev.toFixed(1)}`;
+
+      const isBlocked = (mean < 22) || (stdDev < 7.5);
+      if (isBlocked) {
+        state.clearStartMs = null;
+        if (!state.obstructionStartMs) state.obstructionStartMs = now;
+        const sec = (now - state.obstructionStartMs) / 1000;
+        document.getElementById("obstruct-fill").style.width = `${Math.min(100, (sec / 7.5) * 100)}%`;
+
+        if (!state.emergencyActive && state.phase === "CLIMBING") {
+          // Only maintain continuous pulse modes (0x01 / 0x02), never re-fire one-shots (0x03 / 0x05)!
+          const lp = state.lastActivePacket;
+          if (sec < 7.5 && (lp.mode === 0x01 || lp.mode === 0x02)) {
+            dispatchBlePacket(lp.podKey, lp.mode, lp.p1, lp.p2, `BLOCKED ${sec.toFixed(1)}s — HOLDING PULSE`);
+          }
+          if (sec >= 7.5) enterEmergencyMode("Camera obstructed for over 7.5 seconds");
+        }
+      } else {
+        state.obstructionStartMs = null;
+        document.getElementById("obstruct-fill").style.width = "0%";
+        if (state.emergencyActive && state.standPitchDeg >= 25) {
+          if (!state.clearStartMs) state.clearStartMs = now;
+          if (now - state.clearStartMs >= 1000) exitEmergencyMode("Camera view cleared");
+        }
+      }
+    }
+
+    function enterEmergencyMode(reason) {
+      if (state.emergencyActive) return;
+      clearTimeout(state.startBreakTimerId);
+      clearTimeout(state.betweenHoldTimerId);
+      state.preStartBreakActive = false;
+      state.betweenHoldBreakActive = false;
+      state.phaseBeforeEmergency = state.phase;
+      state.emergencyActive = true;
+      stopAllPodTests(false);
+      playEarcon("emerg");
+      statusEl.className = "state-emergency";
+      startSafeDescent(`Emergency safety mode: ${reason}`);
+      updatePhoneZoneLabels();
+    }
+
+    function exitEmergencyMode(reason) {
+      if (!state.emergencyActive) return;
+      state.emergencyActive = false;
+      state.clearStartMs = null;
+      state.phase = state.phaseBeforeEmergency === "CLIMBING" ? "CLIMBING" : "SAFETY_PASSED";
+      statusEl.className = "state-ok";
+      playEarcon("ok");
+      speak(`${reason}. Emergency safety mode off. Live tracking resumed.`, true);
+      updatePhoneZoneLabels();
+    }
+
+    // =========================================================================
+    // 7. ANATOMICALLY SAFE DESCENT PLANNER (Strictly Downward, Feet Before Hands)
+    // =========================================================================
+    function buildSafeDescentPlan() {
+      const source = state.climbLog.length > 0
+        ? state.climbLog.slice()
+        : state.activeRoute.slice(0, Math.max(1, state.currentMoveIndex + 1)).map((r, i) => ({
+            step: i + 1, x: r.x, y: r.y, holdType: r.type
+          }));
+
+      if (source.length === 0) {
+        state.descentPlan = [];
+        renderDescentLog();
+        return;
+      }
+
+      // Deduplicate holds by proximity and sort TOP (small y) -> BOTTOM (large y)
+      const uniqueHolds = [];
+      source.slice().sort((a, b) => a.y - b.y).forEach(h => {
+        if (!uniqueHolds.some(u => Math.hypot(u.x - h.x, u.y - h.y) < 0.06)) uniqueHolds.push(h);
+      });
+
+      // Initialize realistic starting limb heights if pose isn't currently visible
+      const topY = uniqueHolds[0].y;
+      const simPos = {
+        RW: state.limbs.RW.vis > 0.25 ? { x: state.limbs.RW.x, y: state.limbs.RW.y } : { x: 0.56, y: topY },
+        LW: state.limbs.LW.vis > 0.25 ? { x: state.limbs.LW.x, y: state.limbs.LW.y } : { x: 0.44, y: Math.min(0.85, topY + 0.06) },
+        RA: state.limbs.RA.vis > 0.25 ? { x: state.limbs.RA.x, y: state.limbs.RA.y } : { x: 0.56, y: Math.min(0.88, topY + 0.30) },
+        LA: state.limbs.LA.vis > 0.25 ? { x: state.limbs.LA.x, y: state.limbs.LA.y } : { x: 0.44, y: Math.min(0.88, topY + 0.34) }
+      };
+
+      const steps = [];
+      const limbOrder = [
+        { key: "RA", name: "Right foot", isFoot: true,  prefSide: 1 },
+        { key: "LA", name: "Left foot",  isFoot: true,  prefSide: -1 },
+        { key: "RW", name: "Right hand", isFoot: false, prefSide: 1 },
+        { key: "LW", name: "Left hand",  isFoot: false, prefSide: -1 }
+      ];
+
+      // Walk down in safe cycles: step feet down to lower holds first, then lower hands
+      for (let cycle = 0; cycle < 6 && steps.length < 16; cycle++) {
+        let progressedThisCycle = false;
+        for (const l of limbOrder) {
+          const cur = simPos[l.key];
+          // Find the highest hold that is STRICTLY BELOW this limb (y > cur.y + 0.04)
+          const lowerHolds = uniqueHolds.filter(h => h.y > cur.y + 0.04);
+          if (lowerHolds.length === 0) continue;
+
+          // Choose the closest downward hold preferring matching side (left/right)
+          let best = lowerHolds[0];
+          let bestCost = Infinity;
+          for (const h of lowerHolds) {
+            const dy = h.y - cur.y;
+            const sideMismatch = ((h.x - 0.5) * l.prefSide < -0.05) ? 0.12 : 0;
+            const cost = dy + Math.abs(h.x - cur.x) * 0.45 + sideMismatch;
+            if (cost < bestCost) { bestCost = cost; best = h; }
+          }
+
+          const cd = computeClockAndDistance(cur.x, cur.y, best.x, best.y);
+          simPos[l.key] = { x: best.x, y: best.y };
+          steps.push({
+            descentStep: steps.length + 1,
+            limbKey: l.key,
+            limbName: l.name,
+            hour: cd.hour,
+            distText: cd.distText,
+            holdType: best.holdType || (l.isFoot ? "foothold" : "hold"),
+            x: best.x, y: best.y
+          });
+          progressedThisCycle = true;
+        }
+        if (!progressedThisCycle) break;
+      }
+
+      state.descentPlan = steps;
+      renderDescentLog();
+    }
+
+    function startSafeDescent(reason) {
+      clearTimeout(state.startBreakTimerId);
+      clearTimeout(state.betweenHoldTimerId);
+      state.preStartBreakActive = false;
+      state.betweenHoldBreakActive = false;
+      stopAllPodTests(false);
+      buildSafeDescentPlan();
+      state.phase = "DESCENDING";
+      state.descentIndex = 0;
+      updatePhoneZoneLabels();
+
+      if (state.descentPlan.length === 0) {
+        speak(`${reason}. All motors off. You are near the bottom holds; step down carefully to the crash pad.`, true);
+        return;
+      }
+      const first = state.descentPlan[0];
+      updateDescentHud(first);
+      speak(`${reason}. Motors paused. Guided descent, ${state.descentPlan.length} steps to floor. Step 1: ${first.limbName}, ${first.hour} o'clock, ${first.distText}, ${first.holdType}. Say 'Next hold' or tap Button 1.`, true);
+    }
+
+    function stepSafeDescent() {
+      if (!state.descentPlan.length) {
+        state.phase = "SAFETY_PASSED";
+        updatePhoneZoneLabels();
+        speak("Step down safely to the crash pad.", true);
+        return;
+      }
+      state.descentIndex++;
+      if (state.descentIndex >= state.descentPlan.length) {
+        stopAllPods();
+        state.phase = "SAFETY_PASSED";
+        state.emergencyActive = false;
+        statusEl.className = "state-ok";
+        playEarcon("ok");
+        speak("Final hold reached. Crash pad is directly below you. Step down safely.", true);
+        updatePhoneZoneLabels();
+        return;
+      }
+      const cur = state.descentPlan[state.descentIndex];
+      updateDescentHud(cur);
+      playEarcon("tap");
+      const suf = state.includeHoldType ? `, ${cur.holdType}` : "";
+      speak(`Down step ${cur.descentStep}: ${cur.limbName}, ${cur.hour} o'clock, ${cur.distText}${suf}.`, true);
+    }
+
+    function updateDescentHud(cur) {
+      document.getElementById("hud-limb").textContent = `DOWN: ${cur.limbName.toUpperCase()}`;
+      document.getElementById("hud-clock").textContent = `${cur.hour} O'CLOCK (${cur.distText.toUpperCase()})`;
+      document.getElementById("hud-hold-type").textContent = `DOWN #${cur.descentStep}`;
+      renderDescentLog();
+    }
+
+    function recordManualTestHold() {
+      const y = Math.max(0.15, 0.82 - state.climbLog.length * 0.14);
+      const x = state.climbLog.length % 2 === 0 ? 0.42 : 0.58;
+      state.climbLog.push({ step: state.climbLog.length + 1, limb: "Hold", x, y, holdType: "jug" });
+      renderDescentLog();
+      playEarcon("tap");
+    }
+
+    function clearStoredHolds() {
+      state.climbLog = [];
+      state.descentPlan = [];
+      state.descentIndex = -1;
+      renderDescentLog();
+      speak("Stored holds cleared.", true);
+    }
+
+    function renderDescentLog() {
+      document.getElementById("lab-vec-count").textContent = String(state.climbLog.length);
+      const box = document.getElementById("vector-log");
+      if (state.phase === "DESCENDING" && state.descentPlan.length > 0) {
+        box.innerHTML = state.descentPlan.map((v, i) =>
+          `<div style="${i === state.descentIndex ? "color:#ffea00;font-weight:bold;" : ""}">[DOWN #${v.descentStep}] ${v.limbName} -> ${v.hour} o'clock (${v.holdType})</div>`
+        ).join("");
+        return;
+      }
+      if (state.climbLog.length === 0) { box.textContent = "No holds logged yet."; return; }
+      box.innerHTML = state.climbLog.slice().reverse().map(v =>
+        `<div>[UP #${v.step}] (${v.x.toFixed(2)}, ${v.y.toFixed(2)}) ${v.holdType}</div>`
+      ).join("");
+    }
+
+    // =========================================================================
+    // 8. HOLD GUIDANCE, CONFIRMATION, BETWEEN-HOLD BREAK & POD BENCH TESTS
+    // =========================================================================
+    function getActiveTargetHold() {
+      if (state.guidanceSource === "live") {
+        const podObj = POD_LIST.find(p => p.key === state.liveTargetLimb) || POD_LIST[1];
+        return {
+          found: state.liveHoldBox.found,
+          id: 0,
+          x: state.liveHoldBox.x, y: state.liveHoldBox.y,
+          w: state.liveHoldBox.w, h: state.liveHoldBox.h,
+          type: `${COLOR_OPTIONS[state.routeHoldColor].label} hold`,
+          targetLimb: podObj.key,
+          limbName: podObj.label,
+          isTop: false
+        };
+      }
+      if (state.activeRoute.length === 0) return { found: false };
+      const r = state.activeRoute[state.currentMoveIndex] || state.activeRoute[0];
+      return {
+        found: true,
+        id: r.id,
+        x: r.x, y: r.y,
+        w: r.w || 0.11, h: r.h || 0.11,
+        type: r.type,
+        targetLimb: r.targetLimb,
+        limbName: r.limbName,
+        isTop: r.isTop
+      };
+    }
+
+    function computeClockAndDistance(fromX, fromY, toX, toY) {
+      const dx = toX - fromX;
+      const dy = (toY - fromY) * (1.0 + (1.0 - toY) * 0.30);
+      const dist = Math.hypot(dx, dy);
+      let angle = Math.atan2(dx, -dy);
+      if (angle < 0) angle += Math.PI * 2;
+      let hour = Math.round((angle / (Math.PI * 2)) * 12);
+      if (hour === 0) hour = 12;
+      const ratio = dist / 0.25;
+      const distText = ratio < 0.38 ? "a quarter length" : ratio < 0.68 ? "half a length" : ratio < 0.95 ? "three-quarter length" : "one full length";
+      const shortDist = ratio < 0.38 ? "1/4 LEN" : ratio < 0.68 ? "1/2 LEN" : ratio < 0.95 ? "3/4 LEN" : "1 LEN";
+      return { hour, distText, shortDist, dist };
+    }
+
+    function communicateActiveHold(speakAloud = true) {
+      if (state.phase === "DESCENDING" && state.descentPlan[state.descentIndex]) {
+        const cur = state.descentPlan[state.descentIndex];
+        if (speakAloud) speak(`Down step ${cur.descentStep}: ${cur.limbName}, ${cur.hour} o'clock, ${cur.distText}, ${cur.holdType}.`, true);
+        return;
+      }
+      const target = getActiveTargetHold();
+      if (!target || !target.found) {
+        if (speakAloud) speak("No hold target detected in view.", true);
+        return;
+      }
+      const limb = state.limbs[target.targetLimb] || { x: 0.5, y: 0.8 };
+      const { hour, distText, shortDist } = computeClockAndDistance(limb.x, limb.y, target.x, target.y);
+      document.getElementById("hud-limb").textContent = `LIMB: ${target.limbName.toUpperCase()}`;
+      document.getElementById("hud-clock").textContent = `${hour} O'CLOCK (${shortDist})`;
+      document.getElementById("hud-hold-type").textContent = state.includeHoldType ? target.type.toUpperCase() : "SHORT";
+      if (speakAloud) speak(`${target.limbName}, ${hour} o'clock, ${distText}${state.includeHoldType ? `, ${target.type}` : ""}.`, true);
+    }
+
+    function triggerBetweenHoldBreak() {
+      clearTimeout(state.betweenHoldTimerId);
+      state.betweenHoldBreakActive = true;
+      stopAllPods();
+      statusEl.className = "state-break";
+      statusEl.textContent = `HOLD CONFIRMED — PAUSING ${state.betweenHoldBreakSec.toFixed(1)}s BEFORE NEXT DIRECTIONS...`;
+
+      state.betweenHoldTimerId = setTimeout(() => {
+        state.betweenHoldBreakActive = false;
+        statusEl.className = "state-ok";
+        if (state.phase === "CLIMBING" || state.labMode) communicateActiveHold(true);
+      }, Math.round(state.betweenHoldBreakSec * 1000));
+    }
+
+    function confirmActiveHold(target, allowBleOutput) {
+      state.dwellStartMs = null;
+      document.getElementById("dwell-fill").style.width = "100%";
+      playEarcon("lock");
+      if (allowBleOutput) dispatchBlePacket(target.targetLimb, 0x03, 0, 0, "HOLD CONFIRMED! DOUBLE-CLICK", true);
+      state.climbLog.push({ step: state.climbLog.length + 1, limb: target.limbName, x: target.x, y: target.y, holdType: target.type });
+      renderDescentLog();
+
+      if (state.guidanceSource === "live") {
+        state.liveCooldown = true;
+        triggerBetweenHoldBreak();
+      } else if (target.isTop || state.currentMoveIndex >= state.activeRoute.length - 1) {
+        state.phase = "SUMMIT";
+        if (allowBleOutput) dispatchBlePacket(target.targetLimb, 0x05, 0, 0, "SUMMIT CELEBRATION", true);
+        updatePhoneZoneLabels();
+        speak("Route complete! You reached the top hold. Tap Button 1 or say 'Ready to descend' when ready.", true);
+      } else {
+        state.currentMoveIndex++;
+        triggerBetweenHoldBreak();
+      }
+    }
+
+    function simulateHoldConfirmed() {
+      const target = getActiveTargetHold();
+      if (!target || !target.found) {
+        speak("No active hold to confirm. Capture a wall map or load demo map first.", true);
+        return;
+      }
+      confirmActiveHold(target, state.labVisionHaptics);
+    }
+
+    function evaluateHoldGuidanceAndPackets() {
+      // Never run vision guidance if paused, idle, or during manual bench pod tests
+      if (!state.labMode && state.phase !== "CLIMBING") return;
+      const anyManualBenchTest = Object.values(state.activePodTests).some(Boolean);
+      const allowBleOutput = !anyManualBenchTest && (!state.labMode || state.labVisionHaptics);
+
+      const now = performance.now();
+      const target = getActiveTargetHold();
+      if (!target || !target.found || (!state.poseDetected && state.rawHands.length === 0)) return;
+
+      const limb = state.limbs[target.targetLimb];
+      const { hour, shortDist, dist } = computeClockAndDistance(limb.x, limb.y, target.x, target.y);
+      document.getElementById("hud-limb").textContent = `LIMB: ${target.limbName.toUpperCase()}`;
+      document.getElementById("hud-clock").textContent = `${hour} O'CLOCK (${shortDist})`;
+
+      const inHitbox = Math.abs(limb.x - target.x) <= (target.w * 0.65) &&
+                       Math.abs(limb.y - target.y) <= (target.h * 0.65);
+
+      if (state.guidanceSource === "live" && state.liveCooldown) {
+        if (!inHitbox) state.liveCooldown = false;
+        return;
+      }
+
+      if (inHitbox) {
+        const isFoot = (target.targetLimb === "LA" || target.targetLimb === "RA");
+        const handRecentlySeen = !isFoot && ((now - limb.handSeenMs) <= 450);
+        const isSteady = limb.vx < 0.028;
+
+        const confirmReady = handRecentlySeen ? (limb.clenched && isSteady) : isSteady;
+        const requiredDwellMs = handRecentlySeen ? 1200 : 1800;
+        const modeTxt = handRecentlySeen ? "GRIP LOCK (1.2s)" : "HITBOX TIMING FALLBACK (1.8s)";
+        document.getElementById("diag-confirm-mode").textContent = confirmReady ? modeTxt : `In Hitbox — ${handRecentlySeen ? "Clench hand" : "Hold steady"}`;
+
+        if (confirmReady) {
+          if (!state.dwellStartMs) state.dwellStartMs = now;
+          const elapsed = now - state.dwellStartMs;
+          document.getElementById("dwell-fill").style.width = `${Math.min(100, (elapsed / requiredDwellMs) * 100)}%`;
+
+          if (elapsed >= requiredDwellMs) {
+            confirmActiveHold(target, allowBleOutput);
+            return;
+          }
+        } else {
+          state.dwellStartMs = null;
+          document.getElementById("dwell-fill").style.width = "0%";
+        }
+
+        if (allowBleOutput) dispatchBlePacket(target.targetLimb, 0x02, 18, 235, "OVER HOLD! 18 Hz");
+      } else {
+        state.dwellStartMs = null;
+        document.getElementById("dwell-fill").style.width = "0%";
+        document.getElementById("diag-confirm-mode").textContent = "Approaching hitbox...";
+        if (allowBleOutput && (state.phase === "CLIMBING" || state.labMode)) {
+          const prox = Math.max(0, Math.min(1, 1 - dist / 0.65));
+          dispatchBlePacket(target.targetLimb, 0x01, Math.round(2 + prox * 8), Math.round(75 + prox * 70), "APPROACHING");
+        }
+      }
+    }
+
+    function startPodBuzzTest(key) {
+      if (state.podTestTimers[key]) clearInterval(state.podTestTimers[key]);
+      state.activePodTests[key] = true;
+      dispatchBlePacket(key, 0x02, 14, 245, "BENCH BUZZ TEST (ON)", true);
+      state.podTestTimers[key] = setInterval(() => {
+        if (!state.activePodTests[key]) {
+          clearInterval(state.podTestTimers[key]);
+          state.podTestTimers[key] = null;
+          return;
+        }
+        dispatchBlePacket(key, 0x02, 14, 245, "BENCH BUZZ KEEP-ALIVE", true);
+      }, 1000);
+      syncAllPodUI();
+    }
+
+    function stopPodTest(key) {
+      if (state.podTestTimers[key]) {
+        clearInterval(state.podTestTimers[key]);
+        state.podTestTimers[key] = null;
+      }
+      state.activePodTests[key] = false;
+      dispatchBlePacket(key, 0x00, 0, 0, "BENCH TEST STOPPED", true);
+      playEarcon("tap");
+      syncAllPodUI();
+    }
+
+    function stopAllPodTests(announce = true) {
+      POD_LIST.forEach(p => {
+        if (state.podTestTimers[p.key]) {
+          clearInterval(state.podTestTimers[p.key]);
+          state.podTestTimers[p.key] = null;
+        }
+        state.activePodTests[p.key] = false;
+        dispatchBlePacket(p.key, 0x00, 0, 0, "ALL STOP", true);
+      });
+      if (state.labMode && state.labVisionHaptics) {
+        state.labVisionHaptics = false;
+        const b = document.getElementById("btn-vision-haptics");
+        b.textContent = "Vision Haptics: OFF";
+        b.classList.remove("selected");
+      }
+      syncAllPodUI();
+      if (announce) {
+        playEarcon("warn");
+        speak("All pod tests stopped.", true);
+      }
+    }
+
+    let lastSimTick = 0;
+    function dispatchBlePacket(podKey, mode, p1, p2, label, force = false) {
+      const now = performance.now();
+      if (!force && now - state.lastBleSendMs < 100) return;
+      state.lastBleSendMs = now;
+      if (mode === 0x00 || mode === 0x01 || mode === 0x02) {
+        state.lastActivePacket = { podKey, mode, p1, p2 };
+      }
+
+      const hex = n => "0x" + (n & 0xff).toString(16).toUpperCase().padStart(2, "0");
+      document.getElementById("b0-hex").textContent = hex(mode);
+      document.getElementById("b1-hex").textContent = hex(p1);
+      document.getElementById("b2-hex").textContent = hex(p2);
+      const modes = { 0: "OFF", 1: "APPROACH", 2: "OVER-HOLD", 3: "LOCK", 4: "ACK", 5: "SUMMIT" };
+      document.getElementById("b0-desc").textContent = modes[mode] || "CMD";
+      document.getElementById("b1-desc").textContent = `${p1} Hz`;
+      document.getElementById("b2-desc").textContent = `${p2} / 255`;
+
+      if (state.labMode && state.audioSim && (mode === 1 || mode === 2)) {
+        if (now - lastSimTick >= 1000 / Math.max(1, p1)) { lastSimTick = now; playEarcon("tick"); }
+      }
+
+      if (mode !== 0 || force) {
+        const log = document.getElementById("packet-log");
+        const row = document.createElement("div");
+        row.textContent = `[${(now / 1000).toFixed(1)}s] ${podKey} <- [${hex(mode)}, ${hex(p1)}, ${hex(p2)}] ${label}`;
+        log.prepend(row);
+        while (log.children.length > 25) log.removeChild(log.lastChild);
+      }
+
+      const pod = state.pods[podKey];
+      if (pod && pod.hapticChar) {
+        const pkt = new Uint8Array([mode, p1 & 0xff, p2 & 0xff]);
+        try {
+          if (pod.hapticChar.writeValueWithoutResponse) pod.hapticChar.writeValueWithoutResponse(pkt);
+          else pod.hapticChar.writeValue(pkt);
+        } catch (e) {}
+      }
+    }
+
+    function stopAllPods() {
+      POD_LIST.forEach(p => dispatchBlePacket(p.key, 0x00, 0, 0, "STOP", true));
+    }
+
+    async function connectPodByKey(key) {
+      const target = POD_LIST.find(p => p.key === key);
+      if (!navigator.bluetooth) {
+        speak("Web Bluetooth requires the Bluefy app on iOS. Tap Button 3 to skip pairing.", true);
+        return false;
+      }
+      speak(`Pairing ${target.label}, ${target.name}. Ensure toggle switch is ON.`, true);
+      try {
+        const device = await navigator.bluetooth.requestDevice({ filters: [{ name: target.name }], optionalServices: [SERVICE_UUID] });
+        device.addEventListener("gattserverdisconnected", () => {
+          stopPodTest(key);
+          state.pods[key] = { device: null, hapticChar: null };
+          syncAllPodUI();
+        });
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        const hapticChar = await service.getCharacteristic(HAPTIC_CHAR_UUID);
+        state.pods[key] = { device, hapticChar };
+        syncAllPodUI();
+        playEarcon("ok");
+        dispatchBlePacket(key, 0x04, 0, 0, "PAIRED ACK", true);
+        speak(`${target.label} connected.`, true);
+        return true;
+      } catch (e) {
+        speak(`Pairing cancelled for ${target.label}.`, true);
+        return false;
+      }
+    }
+
+    async function connectNextUnpairedPod() {
+      const next = POD_LIST.find(p => !state.pods[p.key].hapticChar);
+      if (!next) {
+        state.phase = "WALL_SCAN_PENDING";
+        updatePhoneZoneLabels();
+        speak("All four pods connected! Tap Button 1 or say 'Safety check' to proceed.", true);
+        return;
+      }
+      await connectPodByKey(next.key);
+      if (!POD_LIST.find(p => !state.pods[p.key].hapticChar)) {
+        state.phase = "WALL_SCAN_PENDING";
+        updatePhoneZoneLabels();
+      }
+    }
+
+    // =========================================================================
+    // 9. COMPLETE PHONE MODE STATE MACHINE (100% TOUCH + VOICE ACCESSIBLE)
+    // =========================================================================
+    function updatePhoneZoneLabels() {
+      const t1 = document.getElementById("zone1-title");
+      const s1 = document.getElementById("zone1-sub");
+      const t3 = document.getElementById("zone3-title");
+      const s3 = document.getElementById("zone3-sub");
+      const t4 = document.getElementById("zone4-title");
+      const isLive = state.guidanceSource === "live";
+
+      if (state.phase === "UNINIT") {
+        t1.textContent = "1. Start System & Sensors";
+        s1.textContent = "Single tap enables voice, camera & tilt once.";
+        t3.textContent = "3. System Status & Pod Colors";
+        s3.textContent = "Tap Button 1 first to initialize sensors.";
+        t4.textContent = "4. Find My Phone / All Stop";
+      } else if (state.phase === "READY_TO_PAIR") {
+        const paired = POD_LIST.filter(p => state.pods[p.key].hapticChar).length;
+        t1.textContent = `1. Pair Next Pod (${paired}/4 Connected)`;
+        s1.textContent = "Tap to pair next pod via Bluefy BLE.";
+        t3.textContent = "3. Skip Pairing → Safety Check";
+        s3.textContent = "Continue with currently paired pods (no voice needed).";
+        t4.textContent = "4. Find My Phone Beacon";
+      } else if (state.phase === "WALL_SCAN_PENDING") {
+        t1.textContent = isLive ? "1. Run Safety Check (Live Camera)" : "1. Scan Empty Wall & Safety Check";
+        s1.textContent = isLive ? "Checks camera clear & stand upright (>=25°)." : "Captures clean wall map, locks hitboxes & checks tilt.";
+        t3.textContent = "3. Announce Status & Pod Colors";
+        s3.textContent = "Voice: 'Status', 'Live camera', or 'Scan wall'.";
+        t4.textContent = "4. Find My Phone Beacon";
+      } else if (state.phase === "SAFETY_PASSED") {
+        t1.textContent = "1. Start Climb (With Safety Break)";
+        s1.textContent = `Pauses ${state.startBreakSec.toFixed(1)}s before speaking cues (${isLive ? "Live Camera" : state.activeRoute.length + " Map Holds"}).`;
+        t3.textContent = "3. Announce Status / Rescan Wall";
+        s3.textContent = "Tap for full pod & camera status.";
+        t4.textContent = "4. Find My Phone Beacon";
+      } else if (state.phase === "PRE_START_BREAK") {
+        t1.textContent = "1. Safety Break Active — Hold Still";
+        s1.textContent = "Preventing early detection before guidance begins...";
+        t3.textContent = "3. Status";
+        s3.textContent = "Wait for chime...";
+        t4.textContent = "4. Cancel Start / Stop";
+      } else if (state.phase === "CLIMBING") {
+        t1.textContent = "1. Hear Current Hold Cue";
+        s1.textContent = `Break between holds: ${state.betweenHoldBreakSec.toFixed(1)}s | Mode: ${isLive ? "Live Camera" : "Wall Map"}.`;
+        t3.textContent = "3. Begin Guided Descent";
+        s3.textContent = "Tap anytime to stop ascent and descend safely.";
+        t4.textContent = "4. Pause Climb & Stop Motors";
+      } else if (state.phase === "PAUSED") {
+        t1.textContent = "1. Resume Climb";
+        s1.textContent = "Motors paused safely. Tap to resume tracking.";
+        t3.textContent = "3. Begin Guided Descent";
+        s3.textContent = "Step down using stored holds.";
+        t4.textContent = "4. Find My Phone Beacon";
+      } else if (state.phase === "SUMMIT") {
+        t1.textContent = "1. Begin Guided Descent";
+        s1.textContent = "Route complete! Tap or say 'Ready to descend'.";
+        t3.textContent = "3. Announce Status";
+        s3.textContent = `${state.climbLog.length} holds recorded for descent.`;
+        t4.textContent = "4. Find My Phone Beacon";
+      } else if (state.phase === "DESCENDING") {
+        t1.textContent = "1. Next Down-Hold";
+        s1.textContent = "Tap or say 'Next hold' after placing each foot or hand.";
+        t3.textContent = "3. Announce Descent Progress";
+        s3.textContent = `Step ${Math.min(state.descentIndex + 1, state.descentPlan.length)} of ${state.descentPlan.length}`;
+        t4.textContent = "4. Find My Phone / All Stop";
+      }
+    }
+
+    async function handleZone1Primary() {
+      playEarcon("tap");
+      if (state.phase === "UNINIT") { await initializeSystemOnce(); return; }
+      if (state.phase === "READY_TO_PAIR") { await connectNextUnpairedPod(); return; }
+      if (state.phase === "WALL_SCAN_PENDING") { runSafetyAndOptionalWallScan(); return; }
+      if (state.phase === "SAFETY_PASSED") { startClimbWithBreak(); return; }
+      if (state.phase === "PAUSED") {
+        state.phase = "CLIMBING";
+        statusEl.className = "state-ok";
+        updatePhoneZoneLabels();
+        speak("Climb resumed.", true);
+        setTimeout(() => communicateActiveHold(true), 500);
+        return;
+      }
+      if (state.phase === "CLIMBING") { communicateActiveHold(true); return; }
+      if (state.phase === "SUMMIT") { startSafeDescent("Summit descent"); return; }
+      if (state.phase === "DESCENDING") { stepSafeDescent(); return; }
+    }
+
+    function handleZone3Secondary() {
+      if (state.phase === "UNINIT") { initializeSystemOnce(); return; }
+      if (state.phase === "READY_TO_PAIR") {
+        state.phase = "WALL_SCAN_PENDING";
+        updatePhoneZoneLabels();
+        runSafetyAndOptionalWallScan();
+        return;
+      }
+      if (state.phase === "CLIMBING" || state.phase === "PAUSED") {
+        startSafeDescent("Manual descent requested");
+        return;
+      }
+      announceFullStatus();
+    }
+
+    function runSafetyAndOptionalWallScan() {
+      if (state.standPitchDeg < 25) {
+        playEarcon("warn");
+        speak(`Safety check failed. Phone stand is tilted at ${state.standPitchDeg} degrees. Stand it upright above 25 degrees.`, true);
+        return;
+      }
+      if (!videoEl.srcObject) {
+        playEarcon("warn");
+        speak("Safety check failed. Camera is not active.", true);
+        return;
+      }
+      if (state.guidanceSource === "map" && state.activeRoute.length === 0) {
+        captureWallReferenceAndPlan();
+      }
+      state.emergencyActive = false;
+      state.phase = "SAFETY_PASSED";
+      state.currentMoveIndex = 0;
+      statusEl.className = "state-ok";
+      playEarcon("ok");
+      updatePhoneZoneLabels();
+      const modeDesc = state.guidanceSource === "live"
+        ? "Live camera tracking active."
+        : `Wall map active with ${state.activeRoute.length} holds.`;
+      speak(`Safety check passed. Stand upright at ${state.standPitchDeg} degrees. ${modeDesc} Say 'Start' or tap Button 1 when ready.`, true);
+    }
+
+    function startClimbWithBreak() {
+      clearTimeout(state.startBreakTimerId);
+      clearTimeout(state.betweenHoldTimerId);
+      stopAllPodTests(false);
+      if (state.standPitchDeg < 25) {
+        playEarcon("warn");
+        speak("Cannot start. Stand phone upright first.", true);
+        return;
+      }
+
+      state.phase = "PRE_START_BREAK";
+      state.preStartBreakActive = true;
+      state.betweenHoldBreakActive = false;
+      state.currentMoveIndex = 0;
+      state.climbLog = [];
+      state.descentPlan = [];
+      renderDescentLog();
+      updatePhoneZoneLabels();
+
+      statusEl.className = "state-break";
+      let rem = state.startBreakSec;
+      statusEl.textContent = `SAFETY PASSED — SILENT BREAK (${rem.toFixed(1)}s) BEFORE SPEAKING...`;
+
+      const tick = setInterval(() => {
+        rem = Math.max(0, rem - 0.5);
+        playEarcon("tick");
+        if (state.phase === "PRE_START_BREAK") statusEl.textContent = `SAFETY PASSED — SILENT BREAK (${rem.toFixed(1)}s) BEFORE SPEAKING...`;
+        if (rem <= 0.1) clearInterval(tick);
+      }, 500);
+
+      state.startBreakTimerId = setTimeout(() => {
+        clearInterval(tick);
+        if (state.phase !== "PRE_START_BREAK") return;
+        state.preStartBreakActive = false;
+        state.phase = "CLIMBING";
+        statusEl.className = "state-ok";
+        updatePhoneZoneLabels();
+        playEarcon("ok");
+        speak("Climb initiated.", true);
+        setTimeout(() => communicateActiveHold(true), 700);
+      }, Math.round(state.startBreakSec * 1000));
+    }
+
+    function announceFullStatus() {
+      playEarcon("tap");
+      const paired = POD_LIST.filter(p => state.pods[p.key].hapticChar)
+        .map(p => `${p.label} ${COLOR_OPTIONS[state.podColors[p.key]].label}`);
+      const podMsg = paired.length
+        ? `Connected pods: ${paired.join(", ")}.`
+        : `Wrist colors set to right hand ${COLOR_OPTIONS[state.podColors.RW].label}, left hand ${COLOR_OPTIONS[state.podColors.LW].label}.`;
+      const modeMsg = state.guidanceSource === "live"
+        ? `Live camera mode tracking ${COLOR_OPTIONS[state.routeHoldColor].label} holds.`
+        : `Wall map overlay mode with ${state.activeRoute.length} holds.`;
+      speak(`${podMsg} ${modeMsg} Stand tilt ${state.standPitchDeg} degrees.`, true);
+    }
+
+    function handleZone4Danger() {
+      if (state.findPhoneInterval) {
+        clearInterval(state.findPhoneInterval);
+        state.findPhoneInterval = null;
+        if (navigator.vibrate) navigator.vibrate(0);
+        speak("Phone locator stopped.", true);
+        return;
+      }
+      if (state.phase === "PRE_START_BREAK") {
+        clearTimeout(state.startBreakTimerId);
+        state.preStartBreakActive = false;
+        state.phase = "SAFETY_PASSED";
+        statusEl.className = "state-ok";
+        updatePhoneZoneLabels();
+        playEarcon("warn");
+        speak("Start cancelled.", true);
+        return;
+      }
+      if (state.phase === "CLIMBING") {
+        clearTimeout(state.betweenHoldTimerId);
+        state.betweenHoldBreakActive = false;
+        state.phase = "PAUSED";
+        stopAllPodTests(false);
+        statusEl.className = "state-break";
+        updatePhoneZoneLabels();
+        playEarcon("warn");
+        speak("Climb paused and all motors stopped. Tap Button 1 to resume, Button 3 to descend, or Button 4 again for phone locator.", true);
+        return;
+      }
+      stopAllPodTests(false);
+      speak("Phone locator active. Tap Button 4 or say 'Stop' to silence.", true);
+      state.findPhoneInterval = setInterval(() => {
+        playEarcon("beacon");
+        if (navigator.vibrate) navigator.vibrate([300, 120, 300]);
+      }, 1800);
+    }
+
+    // =========================================================================
+    // 10. HANDS-FREE VOICE COMMANDS
+    // =========================================================================
+    function initSpeechRecognition() {
+      if (state.speechRec) return;
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) return;
+      const rec = new SR();
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.lang = "en-US";
+      rec.onresult = (e) => {
+        if (state.preStartBreakActive) return;
+        const cmd = e.results[e.results.length - 1][0].transcript.toLowerCase().trim();
+        if (cmd.includes("repeat")) repeatLastMessage();
+        else if (cmd.includes("find my phone")) handleZone4Danger();
+        else if (cmd.includes("stop") || cmd.includes("pause")) {
+          if (state.findPhoneInterval || state.phase === "CLIMBING" || state.phase === "PRE_START_BREAK") handleZone4Danger();
+          else stopAllPodTests(true);
+        }
+        else if (cmd.includes("resume")) { if (state.phase === "PAUSED") handleZone1Primary(); }
+        else if (cmd.includes("live camera")) { setGuidanceSource("live"); speak("Live camera mode active.", true); }
+        else if (cmd.includes("scan wall")) captureWallReferenceAndPlan();
+        else if (cmd.includes("skip pairing") || cmd.includes("safety")) runSafetyAndOptionalWallScan();
+        else if (cmd.includes("connect")) connectNextUnpairedPod();
+        else if (cmd.includes("start")) startClimbWithBreak();
+        else if (cmd.includes("status")) announceFullStatus();
+        else if (cmd.includes("short mode")) { state.includeHoldType = false; speak("Short mode active.", true); }
+        else if (cmd.includes("full mode")) { state.includeHoldType = true; speak("Full mode active.", true); }
+        else if (cmd.includes("again") || cmd.includes("hold")) communicateActiveHold(true);
+        else if (cmd.includes("descend")) startSafeDescent("Ready to descend");
+        else if (cmd.includes("next") || cmd === "down") { if (state.phase === "DESCENDING") stepSafeDescent(); }
+      };
+      rec.onend = () => {
+        if (document.visibilityState === "visible") setTimeout(() => { try { rec.start(); } catch (e) {} }, 450);
+      };
+      try { rec.start(); state.speechRec = rec; } catch (e) {}
+    }
+
+    // =========================================================================
+    // 11. LAB STEP NAVIGATION & SYNCED UI HELPERS
+    // =========================================================================
+    function selectLabStep(n) {
+      state.activeLabStep = n;
+      for (let i = 1; i <= 5; i++) {
+        document.getElementById(`tab-s${i}`).classList.toggle("active", i === n);
+        document.getElementById(`panel-s${i}`).classList.toggle("active", i === n);
+      }
+      playEarcon("tap");
+    }
+
+    function syncAllPodUI() {
+      POD_LIST.forEach(p => {
+        const cObj = COLOR_OPTIONS[state.podColors[p.key] || p.defaultColor];
+        const connected = Boolean(state.pods[p.key].hapticChar);
+        const badge = document.getElementById(`badge-${p.key}`);
+        if (badge) {
+          badge.innerHTML = `<span class="swatch-dot" id="dot-${p.key}" style="background:${cObj.hex};"></span>${p.uiKey}: ${connected ? "ON" : "OFF"}`;
+          badge.className = `pod-badge ${connected ? "connected" : ""}`;
+          badge.style.borderColor = cObj.hex;
+        }
+      });
+
+      const bleGrid = document.getElementById("lab-ble-grid");
+      bleGrid.innerHTML = "";
+      ["RW", "LW", "RA", "LA"].forEach(key => {
+        const p = POD_LIST.find(x => x.key === key);
+        const cObj = COLOR_OPTIONS[state.podColors[key] || p.defaultColor];
+        const connected = Boolean(state.pods[key].hapticChar);
+        const isTesting = Boolean(state.activePodTests[key]);
+        const card = document.createElement("div");
+        card.className = `pod-box-card ${isTesting ? "testing" : ""}`;
+        card.style.borderLeftColor = cObj.hex;
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; font-weight:800;">
+            <span><span class="swatch-dot" style="background:${cObj.hex};"></span> ${p.uiKey} (${p.name})</span>
+            <span style="color:${isTesting ? "#ffea00" : (connected ? "#00e676" : "#90a4ae")};">${isTesting ? "PULSING" : (connected ? "ON" : "OFF")}</span>
+          </div>
+          <div class="row-wrap">
+            <button class="lab-btn" style="padding:4px 7px; font-size:0.69rem;" onclick="connectPodByKey('${key}')">${connected ? "Re-Pair" : "Pair"}</button>
+            <button class="lab-btn ok" style="padding:4px 7px; font-size:0.69rem;" onclick="dispatchBlePacket('${key}', 0x03, 0, 0, 'LAB CLICK', true)">Click</button>
+            <button class="lab-btn warn ${isTesting ? "selected" : ""}" style="padding:4px 7px; font-size:0.69rem;" onclick="startPodBuzzTest('${key}')">Buzz</button>
+            <button class="lab-btn danger" style="padding:4px 7px; font-size:0.69rem;" onclick="stopPodTest('${key}')">Stop</button>
+          </div>
+        `;
+        bleGrid.appendChild(card);
+      });
+
+      const colGrid = document.getElementById("lab-color-grid");
+      colGrid.innerHTML = "";
+      ["RW", "LW", "RA", "LA"].forEach(key => {
+        const p = POD_LIST.find(x => x.key === key);
+        const curKey = state.podColors[key] || p.defaultColor;
+        const cObj = COLOR_OPTIONS[curKey];
+        const opts = Object.entries(COLOR_OPTIONS).map(([k, v]) =>
+          `<option value="${k}" ${k === curKey ? "selected" : ""}>${v.label}</option>`
+        ).join("");
+        const card = document.createElement("div");
+        card.className = "pod-box-card";
+        card.style.borderLeftColor = cObj.hex;
+        card.innerHTML = `
+          <div style="font-weight:800;"><span class="swatch-dot" style="background:${cObj.hex};"></span> ${p.uiKey} (${p.label})</div>
+          <select class="lab-select" onchange="setWristPodColor('${key}', this.value)">${opts}</select>
+        `;
+        colGrid.appendChild(card);
+      });
+
+      const anchorBtn = document.getElementById("btn-anchor-toggle");
+      if (anchorBtn) {
+        anchorBtn.textContent = state.podAnchorEnabled ? "Anchor Lock: ON" : "Anchor Lock: OFF";
+        anchorBtn.classList.toggle("selected", state.podAnchorEnabled);
+      }
+      updatePhoneZoneLabels();
+    }
+
+    function setWristPodColor(podKey, colorKey) {
+      state.podColors[podKey] = colorKey;
+      localStorage.setItem("jarvis_pod_colors", JSON.stringify(state.podColors));
+      syncAllPodUI();
+      playEarcon("tap");
+    }
+
+    function setRouteHoldColor(colorKey) {
+      state.routeHoldColor = colorKey;
+      state.liveSampledHue = null;
+      localStorage.setItem("jarvis_route_color", colorKey);
+      playEarcon("tap");
+    }
+
+    function togglePodAnchor() {
+      state.podAnchorEnabled = !state.podAnchorEnabled;
+      localStorage.setItem("jarvis_pod_anchor", JSON.stringify(state.podAnchorEnabled));
+      syncAllPodUI();
+      playEarcon("tap");
+    }
+
+    function toggleAudioSim() {
+      state.audioSim = !state.audioSim;
+      const b = document.getElementById("btn-audio-sim");
+      b.textContent = `Audio Sim: ${state.audioSim ? "ON" : "OFF"}`;
+      b.classList.toggle("selected", state.audioSim);
+    }
+
+    function updateStartBreak(val) {
+      state.startBreakSec = Number(val);
+      document.getElementById("break-val-lbl").textContent = `${state.startBreakSec.toFixed(1)}s`;
+      localStorage.setItem("jarvis_start_break", String(state.startBreakSec));
+      updatePhoneZoneLabels();
+    }
+
+    function updateHoldBreak(val) {
+      state.betweenHoldBreakSec = Number(val);
+      document.getElementById("hold-break-lbl").textContent = `${state.betweenHoldBreakSec.toFixed(1)}s`;
+      localStorage.setItem("jarvis_hold_break", String(state.betweenHoldBreakSec));
+      updatePhoneZoneLabels();
+    }
+
+    function toggleShortMode() {
+      state.includeHoldType = !state.includeHoldType;
+      document.getElementById("btn-short-mode").textContent = state.includeHoldType ? "Mode: FULL" : "Mode: SHORT";
+      speak(state.includeHoldType ? "Full mode active." : "Short mode active.", true);
+    }
+
+    // Event Bindings
+    document.getElementById("zone-primary").addEventListener("click", handleZone1Primary);
+    document.getElementById("zone-repeat").addEventListener("click", repeatLastMessage);
+    document.getElementById("zone-status").addEventListener("click", handleZone3Secondary);
+    document.getElementById("zone-danger").addEventListener("click", handleZone4Danger);
+
+    document.getElementById("btn-toggle-lab").addEventListener("click", async () => {
+      if (!state.permissionsInitialized) await initializeSystemOnce();
+      state.labMode = !state.labMode;
+      const btn = document.getElementById("btn-toggle-lab");
+      document.getElementById("view-phone").style.display = state.labMode ? "none" : "grid";
+      document.getElementById("view-lab").style.display   = state.labMode ? "grid" : "none";
+      btn.textContent = state.labMode ? "Lab Test: ON (Phone UI)" : "Lab Test: OFF";
+      btn.classList.toggle("active", state.labMode);
+      btn.setAttribute("aria-pressed", String(state.labMode));
+      if (!state.labMode) stopAllPodTests(false);
+      syncAllPodUI();
+      speak(state.labMode ? "Lab test mode active." : "Phone mode active. Wrist colors and tracking mode synced.", true);
+    });
+
+    document.getElementById("btn-flip-cam").addEventListener("click", async (e) => {
+      if (!state.permissionsInitialized) await initializeSystemOnce();
+      state.facingMode = state.facingMode === "environment" ? "user" : "environment";
+      e.target.textContent = state.facingMode === "environment" ? "Cam: Rear" : "Cam: Front";
+      await startCameraStream(state.facingMode);
+      speak(state.facingMode === "environment" ? "Rear camera active." : "Front camera active.", true);
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("start-break-slider").value = state.startBreakSec;
+      document.getElementById("break-val-lbl").textContent = `${state.startBreakSec.toFixed(1)}s`;
+      document.getElementById("hold-break-slider").value = state.betweenHoldBreakSec;
+      document.getElementById("hold-break-lbl").textContent = `${state.betweenHoldBreakSec.toFixed(1)}s`;
+      document.getElementById("select-route-color").value = state.routeHoldColor;
+      setGuidanceSource(state.guidanceSource);
+      syncAllPodUI();
+      renderDescentLog();
+    });
+  </script>
+</body>
+</html>
